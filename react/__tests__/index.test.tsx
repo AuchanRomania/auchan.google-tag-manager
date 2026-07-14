@@ -1,8 +1,16 @@
+import React from 'react'
+import { render } from '@testing-library/react'
+
 import productImpressionData from '../__mocks__/productImpression'
 import productDetails from '../__mocks__/productDetail'
 import productClick from '../__mocks__/productClick'
 import { buildViewPromotionData } from '../__mocks__/viewPromotion'
-import { handleEvents } from '../index'
+import {
+  default as GoogleTagManager,
+  setPageTypeFromRoute,
+  setUserDataFromSession,
+  handleEvents,
+} from '../index'
 import updateEcommerce from '../modules/updateEcommerce'
 import {
   Promotion,
@@ -30,6 +38,119 @@ const mockedUpdate = updateEcommerce as jest.Mock
 
 beforeEach(() => {
   mockedUpdate.mockReset()
+  window.dataLayer = [
+    { pagetype: 'home', userData: { loggedStatus: 'guest' } },
+  ]
+})
+
+test('initializes pagetype and guest userData when the block is mounted', () => {
+  window.dataLayer = [{ existing: true }]
+
+  render(<GoogleTagManager />)
+
+  expect(window.dataLayer[0]).toEqual({
+    existing: true,
+    pagetype: 'home',
+    userData: { loggedStatus: 'guest' },
+  })
+})
+
+test('does not block events while dataLayer context is initializing', () => {
+  window.dataLayer = []
+  const message = new MessageEvent('message', {
+    data: productImpressionData,
+  })
+
+  handleEvents(message)
+  expect(mockedUpdate).toHaveBeenCalled()
+})
+
+test.each([
+  ['store.home', 'home'],
+  ['store.search#category', 'category'],
+  ['store.search.product-comparison#subcategory', 'category'],
+  ['store.search.product-comparison#brand', 'category'],
+  ['store.product', 'product'],
+  ['store.product.product-comparison', 'product'],
+  ['store.search', 'search'],
+  ['store.search.product-comparison', 'search'],
+  ['store.cart', 'cart'],
+  ['store.checkout', 'checkout'],
+  ['store.orderplaced', 'order_placed'],
+])('emits pagetype for route %s', (routeId, pagetype) => {
+  window.dataLayer = [{ existing: true }]
+
+  setPageTypeFromRoute(routeId)
+
+  expect(window.dataLayer[0]).toEqual({ existing: true, pagetype })
+})
+
+test('emits guest userData in dataLayer[0]', () => {
+  window.dataLayer = [{ pagetype: 'home' }]
+
+  setUserDataFromSession({
+    namespaces: {
+      profile: { isAuthenticated: { value: 'false' } },
+    },
+  })
+
+  expect(window.dataLayer[0]).toEqual({
+    pagetype: 'home',
+    userData: { loggedStatus: 'guest' },
+  })
+})
+
+test('emits logged user identity without exposing the raw email', async () => {
+  window.dataLayer = [{ pagetype: 'product' }]
+  const digest = jest
+    .fn()
+    .mockResolvedValue(new Uint8Array([0xab, 0xcd]).buffer)
+
+  Object.defineProperty(window, 'crypto', {
+    configurable: true,
+    value: { subtle: { digest } },
+  })
+  Object.defineProperty(global, 'TextEncoder', {
+    configurable: true,
+    value: class {
+      public encode(value: string) {
+        return Uint8Array.from(value.split('').map(char => char.charCodeAt(0)))
+      }
+    },
+  })
+
+  const userDataReady = setUserDataFromSession({
+    namespaces: {
+      profile: {
+        isAuthenticated: { value: 'true' },
+        id: { value: 'user-123' },
+        email: { value: ' User@Example.com ' },
+      },
+    },
+  })
+
+  expect(window.dataLayer[0]).toEqual({
+    pagetype: 'product',
+    userData: {
+      loggedStatus: 'logged',
+      userId: 'user-123',
+    },
+  })
+
+  await userDataReady
+
+  expect(window.dataLayer[0]).toEqual({
+    pagetype: 'product',
+    userData: {
+      loggedStatus: 'logged',
+      userId: 'user-123',
+      emailHash: 'abcd',
+    },
+  })
+  expect(
+    String.fromCharCode(...new Uint8Array(digest.mock.calls[0][1]))
+  ).toBe('user@example.com')
+  expect(JSON.stringify(window.dataLayer)).not.toContain('User@Example.com')
 })
 
 test('productImpression', () => {
@@ -161,6 +282,7 @@ describe('GA4 events', () => {
       expect(mockedUpdate).toHaveBeenCalledWith('view_item_list', {
         ecommerce: {
           item_list_name: 'Shelf',
+          item_list_id: 'shelf-home',
           items: [
             {
               discount: 0,
@@ -171,6 +293,9 @@ describe('GA4 events', () => {
               item_id: '16',
               item_name: 'Classic Shoes Top',
               item_variant: '35',
+              item_store: '1',
+              in_stock: true,
+              item_list_id: 'shelf-home',
               price: 38.9,
               quantity: 1,
               dimension1: '12531',
@@ -187,6 +312,9 @@ describe('GA4 events', () => {
               item_id: '15',
               item_name: 'Gorgeous Top Watch',
               item_variant: '32',
+              item_store: '1',
+              in_stock: false,
+              item_list_id: 'shelf-home',
               price: 2200,
               quantity: 0,
               dimension1: '',
@@ -222,6 +350,12 @@ describe('GA4 events', () => {
               discount: 0,
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
+              item_category4: 'Running',
+              item_store: '1',
+              reviews_number: 24,
+              reviews_avg: 4.5,
+              in_stock: true,
+              item_list_id: 'category-10',
               dimension1: '123',
               dimension2: '12531',
               dimension3: 'Classic Pink',
@@ -242,6 +376,7 @@ describe('GA4 events', () => {
       expect(mockedUpdate).toHaveBeenCalledWith('select_item', {
         ecommerce: {
           item_list_name: 'List of products',
+          item_list_id: 'category-10',
           items: [
             {
               item_id: '16',
@@ -249,6 +384,9 @@ describe('GA4 events', () => {
               item_list_name: 'List of products',
               item_brand: 'Mizuno',
               item_variant: '35',
+              item_store: '1',
+              in_stock: true,
+              item_list_id: 'category-10',
               index: 3,
               price: 38.9,
               quantity: 1,
@@ -313,6 +451,9 @@ describe('GA4 events', () => {
         | 'productRefId'
         | 'referenceId'
         | 'variant'
+        | 'item_store'
+        | 'in_stock'
+        | 'item_category4'
       >
 
       const cartItem1: CartItemMockType = {
@@ -327,6 +468,9 @@ describe('GA4 events', () => {
         productRefId: '123',
         referenceId: '456',
         variant: 'Red',
+        item_store: '1',
+        in_stock: false,
+        item_category4: 'Furniture',
       }
 
       const cartItem2: CartItemMockType = {
@@ -365,6 +509,9 @@ describe('GA4 events', () => {
               item_name: 'Top Wood',
               item_variant: '2000304',
               item_category: 'Home & Decor',
+              item_category4: 'Furniture',
+              item_store: '1',
+              in_stock: false,
               quantity: 1,
               price: 197.99,
               dimension1: '123',
@@ -480,6 +627,7 @@ describe('GA4 events', () => {
               item_id: '9',
               item_name: 'Top Everyday Necessaire',
               item_variant: '20',
+              item_store: '1',
               price: 1600.99,
               quantity: 2,
               dimension1: '',
@@ -700,6 +848,7 @@ describe('GA4 events', () => {
               item_id: '9',
               item_name: 'Top Everyday Necessaire',
               item_variant: '20',
+              item_store: '1',
               price: 1600.99,
               quantity: 2,
               dimension1: '',
@@ -751,6 +900,47 @@ describe('GA4 events', () => {
   })
 
   describe('add_to_wishlist', () => {
+    it('maps the wishlist payload emitted by the storefront', () => {
+      const data = {
+        currency: 'RON',
+        eventName: 'vtex:addToWishlist',
+        event: 'addToWishlist',
+        wishlistEventObject: {
+          action: 'add',
+          button_type: 'addToWishlist - product page',
+          page_type: 'product page',
+          product_id: '454698',
+          product_title: 'Apa minerala Dorna, 2 l',
+          item_price: 114.52,
+          item_quantity: 1,
+          product_brand: 'Dorna',
+          categories_path: 'Bauturi si Tutun > Apa > Apa carbogazoasa',
+        },
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith('add_to_wishlist', {
+        ecommerce: {
+          currency: 'RON',
+          value: 114.52,
+          items: [
+            {
+              item_id: '454698',
+              item_name: 'Apa minerala Dorna, 2 l',
+              item_brand: 'Dorna',
+              item_category: 'Bauturi si Tutun',
+              item_category2: 'Apa',
+              item_category3: 'Apa carbogazoasa',
+              price: 114.52,
+              quantity: 1,
+              discount: 0,
+            },
+          ],
+        },
+      })
+    })
+
     it('sends an event when the user add a product to wishlist', () => {
       const message = new MessageEvent('message', { data: productWishlist })
 
@@ -774,6 +964,9 @@ describe('GA4 events', () => {
               discount: 0,
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
+              item_store: '1',
+              in_stock: true,
+              item_list_id: 'category-10',
               dimension1: '123',
               dimension2: '12531',
               dimension3: 'Classic Pink',

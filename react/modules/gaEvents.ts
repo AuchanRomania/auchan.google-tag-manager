@@ -29,6 +29,9 @@ import {
   getPurchaseObjectData,
   getPurchaseItems,
   formatCartItemsAndValue,
+  getGA4ItemFields,
+  getReviewFields,
+  getSellerItemFields,
 } from './utils'
 import { customDimensions, productViewSkuReference } from './customDimensions'
 import shouldSendGA4Events from './utils/shouldSendGA4Events'
@@ -38,7 +41,7 @@ export function viewItem(eventData: ProductViewData) {
 
   const eventName = 'view_item'
 
-  const { currency, product, list } = eventData
+  const { currency, product, list, item_list_id: itemListId } = eventData
 
   const {
     selectedSku,
@@ -67,6 +70,11 @@ export function viewItem(eventData: ProductViewData) {
     quantity,
     price: value,
     ...categoriesHierarchy,
+    ...getGA4ItemFields(product),
+    ...getGA4ItemFields(selectedSku),
+    ...getSellerItemFields(seller),
+    ...getReviewFields(product),
+    ...(itemListId ? { item_list_id: itemListId } : {}),
     ...customDimensions({
       productReference,
       skuReference: productViewSkuReference(product),
@@ -89,12 +97,13 @@ export function viewItemList(eventData: ProductImpressionData) {
 
   const eventName = 'view_item_list'
 
-  const { list, impressions } = eventData
+  const { list, impressions, item_list_id: itemListId } = eventData
 
-  const items = getImpressions(impressions)
+  const items = getImpressions(impressions, itemListId)
 
   const data = {
     item_list_name: list,
+    ...(itemListId !== undefined ? { item_list_id: itemListId } : {}),
     items,
   }
 
@@ -106,7 +115,7 @@ export function selectItem(eventData: ProductClickData) {
 
   const eventName = 'select_item'
 
-  const { product, list, position } = eventData
+  const { product, list, position, item_list_id: itemListId } = eventData
 
   const {
     sku,
@@ -136,6 +145,10 @@ export function selectItem(eventData: ProductClickData) {
     quantity,
     discount,
     ...categoriesHierarchy,
+    ...getGA4ItemFields(product),
+    ...getGA4ItemFields(sku),
+    ...getSellerItemFields(seller),
+    ...(itemListId ? { item_list_id: itemListId } : {}),
     ...customDimensions({
       productReference,
       skuReference: referenceId?.Value,
@@ -146,6 +159,7 @@ export function selectItem(eventData: ProductClickData) {
 
   const data = {
     item_list_name: list,
+    ...(itemListId !== undefined ? { item_list_id: itemListId } : {}),
     items: [item],
   }
 
@@ -333,7 +347,41 @@ export function viewCart(eventData: ViewCartData) {
 export function addToWishlist(eventData: AddToWishlistData) {
   const eventName = 'add_to_wishlist'
 
-  const { currency, items, list } = eventData
+  const {
+    currency,
+    items,
+    list,
+    item_list_id: itemListId,
+    wishlistEventObject,
+  } = eventData
+
+  if (wishlistEventObject) {
+    const {
+      product_id: itemId,
+      product_title: itemName,
+      product_brand: itemBrand,
+      item_price: price,
+      item_quantity: quantity,
+      categories_path: categoriesPath,
+    } = wishlistEventObject
+
+    const item = {
+      item_id: itemId,
+      item_name: itemName,
+      item_brand: itemBrand,
+      price,
+      quantity,
+      discount: 0,
+      ...getCategoriesWithHierarchy([categoriesPath.replace(/ > /g, '/')]),
+    }
+
+    updateEcommerce(eventName, {
+      ecommerce: { currency, value: price * quantity, items: [item] },
+    })
+    return
+  }
+
+  if (!items) return
 
   const { product } = items
 
@@ -364,6 +412,10 @@ export function addToWishlist(eventData: AddToWishlistData) {
     quantity,
     price: value,
     ...categoriesHierarchy,
+    ...getGA4ItemFields(product),
+    ...getGA4ItemFields(sku ?? items.selectedItem),
+    ...getSellerItemFields(seller),
+    ...(itemListId ? { item_list_id: itemListId } : {}),
     ...customDimensions({
       productReference,
       skuReference: sku ? sku.referenceId.Value : items.selectedItem.referenceId,

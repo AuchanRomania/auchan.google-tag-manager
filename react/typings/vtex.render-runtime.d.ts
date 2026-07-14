@@ -34,6 +34,11 @@ declare module 'vtex.render-runtime' {
   export const NoSSR: ReactElement
   export const RenderContextConsumer: ReactElement
   export const canUseDOM: boolean
+  export const useRuntime: () => {
+    route: {
+      id: string
+    }
+  }
   export const withRuntimeContext: <TOriginalProps extends unknown>(
     Component: ComponentType<TOriginalProps & RenderContextProps>
   ) => ComponentType<TOriginalProps>

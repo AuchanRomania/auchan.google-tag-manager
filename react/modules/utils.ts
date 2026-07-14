@@ -1,11 +1,42 @@
 import {
   CartItem,
+  GA4ItemData,
   Impression,
   Order,
   ProductOrder,
   Seller,
 } from '../typings/events'
 import { customDimensions } from './customDimensions'
+
+const ga4ItemFieldNames = [
+  'item_store',
+  'in_stock',
+  'item_list_id',
+  'item_category4',
+] as const
+
+export function getGA4ItemFields(item: GA4ItemData) {
+  if (!item) return {}
+
+  return ga4ItemFieldNames.reduce((fields, fieldName) => {
+    return item[fieldName] === undefined
+      ? fields
+      : { ...fields, [fieldName]: item[fieldName] }
+  }, {} as GA4ItemData)
+}
+
+export function getReviewFields(item: GA4ItemData) {
+  if (!item) return {}
+
+  return {
+    ...(item.reviews_number !== undefined
+      ? { reviews_number: item.reviews_number }
+      : {}),
+    ...(item.reviews_avg !== undefined
+      ? { reviews_avg: item.reviews_avg }
+      : {}),
+  }
+}
 
 export function getSeller(sellers: Seller[]) {
   const defaultSeller = sellers.find(seller => seller.sellerDefault)
@@ -15,6 +46,21 @@ export function getSeller(sellers: Seller[]) {
   }
 
   return defaultSeller
+}
+
+export function getSellerItemFields(seller?: Seller) {
+  if (!seller) return {}
+
+  const availableQuantity =
+    seller.commertialOffer?.AvailableQuantity ??
+    seller.commercialOffer?.AvailableQuantity
+
+  return {
+    ...(seller.sellerId ? { item_store: seller.sellerId } : {}),
+    ...(availableQuantity !== undefined
+      ? { in_stock: availableQuantity > 0 }
+      : {}),
+  }
 }
 
 export function getPrice(seller: Seller) {
@@ -62,32 +108,13 @@ export function getCategoriesWithHierarchy(categoriesArray: string[]) {
   return categoriesFormatted
 }
 
-function getCategoriesHierarchyByKey(
-  categories: Record<string, string> | null,
-  keysArray?: string[]
-) {
-  if (!keysArray || !keysArray.length || !categories) return []
-  const categoriesFormatted: string[] = []
-  const categoriesHierarchyFormatted = {}
-
-  keysArray.forEach(key => {
-    if (key) categoriesFormatted.push(categories[key])
-  })
-
-  categoriesFormatted.forEach((category, index) => {
-    formatCategoriesHierarchy(categoriesHierarchyFormatted, category, index)
-  })
-
-  return categoriesHierarchyFormatted
-}
-
 export function getQuantity(seller: Seller) {
   const isAvailable = seller.commertialOffer.AvailableQuantity > 0
 
   return isAvailable ? 1 : 0
 }
 
-export function getImpressions(impressions: Impression[]) {
+export function getImpressions(impressions: Impression[], itemListId?: string) {
   if (!impressions || !impressions.length) return []
 
   const formattedImpressions = impressions.map(impression => {
@@ -119,6 +146,10 @@ export function getImpressions(impressions: Impression[]) {
       price,
       quantity,
       ...categoriesHierarchy,
+      ...getGA4ItemFields(product),
+      ...getGA4ItemFields(sku),
+      ...getSellerItemFields(seller),
+      ...(itemListId ? { item_list_id: itemListId } : {}),
       ...customDimensions({
         productReference,
         skuReference: referenceId?.Value,
@@ -220,6 +251,8 @@ function formatPurchaseProduct(product: ProductOrder) {
     price,
     quantity,
     ...getCategoriesWithHierarchy([categoryTree.join('/')]),
+    ...getGA4ItemFields(product),
+    ...(product.sellerId ? { item_store: product.sellerId } : {}),
     ...customDimensions({
       productReference: productRefId,
       skuReference: skuRefId,
@@ -250,10 +283,7 @@ export function formatCartItemsAndValue(
 
     const itemBrand = item.brand ? item.brand : item.additionalInfo?.brandName
 
-    const categoryIds = splitIntoCategories(item.productCategoryIds)
-    const formattedCategories = item.category
-      ? getCategoriesWithHierarchy([item.category])
-      : getCategoriesHierarchyByKey(item.productCategories, categoryIds)
+    const formattedCategories = getCategoriesWithHierarchy([item.category])
 
     totalValue += formattedPrice * item.quantity
 
@@ -265,6 +295,7 @@ export function formatCartItemsAndValue(
       quantity: item.quantity,
       price: formattedPrice,
       ...formattedCategories,
+      ...getGA4ItemFields(item),
       ...customDimensions({
         productReference: item.productRefId,
         skuReference: item.referenceId,

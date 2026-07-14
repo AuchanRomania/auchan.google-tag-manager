@@ -1,7 +1,7 @@
 {
   "name": "google-tag-manager",
-  "vendor": "vtex",
-  "version": "3.5.4",
+  "vendor": "auchan",
+  "version": "0.0.1",
   "title": "Google Tag Manager",
   "description": "Google Tag Manager",
   "mustUpdateAt": "2019-04-03",
@@ -24,13 +24,9 @@
     "docs": "0.x"
   },
   "dependencies": {
-    "vtex.pixel-interfaces": "1.x"
+    "vtex.pixel-interfaces": "1.x",
+    "vtex.session-client": "1.x"
   },
-  "policies": [
-    {
-      "name": "pixel"
-    }
-  ],
   "settingsSchema": {
     "title": "Google Tag Manager",
     "type": "object",

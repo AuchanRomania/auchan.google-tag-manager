@@ -11,6 +11,8 @@ const productDetail = {
     metaTagDescription: "If you go classic, you can't go wrong.",
     linkText: 'classic-shoes',
     productReference: '123',
+    reviews_number: 24,
+    reviews_avg: 4.5,
     categories: ['/Apparel & Accessories/Shoes/', '/Apparel & Accessories/'],
     categoryId: '10',
     categoriesIds: ['/25/10/', '/25/'],
@@ -606,6 +608,9 @@ const productDetail = {
     __typename: 'Product',
     benefits: [],
     selectedSku: {
+      item_store: '1',
+      in_stock: true,
+      item_category4: 'Running',
       itemId: '35',
       name: 'Classic Pink',
       nameComplete: 'Classic Shoes Top Classic Pink',
@@ -792,6 +797,7 @@ const productDetail = {
     },
   },
   list: 'List of products',
+  item_list_id: 'category-10',
 }
 
 export default productDetail

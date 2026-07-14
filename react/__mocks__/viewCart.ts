@@ -7,8 +7,9 @@ const cartItem1 = {
   name: 'Top Wood',
   skuName: 'top_wood_200',
   price: 19799,
+  category: 'Home & Decor',
   productCategories: {
-    '25': 'Home & Decor',
+    '25': '25',
   },
   productCategoryIds: '/25/',
   quantity: 2,
@@ -26,9 +27,10 @@ const cartItem2 = {
   name: 'Top Wood 2',
   skuName: 'top_wood_300',
   price: 15090,
+  category: 'Home & Decor/Tables',
   productCategories: {
-    '25': 'Home & Decor',
-    '32': 'Tables',
+    '25': '25',
+    '32': '32',
   },
   productCategoryIds: '/25/32/',
   quantity: 1,

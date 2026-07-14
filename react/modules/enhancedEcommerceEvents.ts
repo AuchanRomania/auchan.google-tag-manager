@@ -435,11 +435,7 @@ function getCheckoutProductObjectData(
     id: item.productId, // Product id
     variant: item.id, // SKU id
     name: productName, // Product name without variant
-    category: Object.keys(item.productCategories ?? {}).reduce(
-      (categories, category) =>
-        categories ? `${categories}/${category}` : category,
-      ''
-    ),
+    category: item.category,
     brand: item.additionalInfo?.brandName ?? '',
     price: item.sellingPrice / 100,
     quantity: item.quantity,

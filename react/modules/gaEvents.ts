@@ -35,6 +35,10 @@ import {
 } from './utils'
 import { customDimensions, productViewSkuReference } from './customDimensions'
 import shouldSendGA4Events from './utils/shouldSendGA4Events'
+import {
+  resolveItemListId,
+  saveListAttributions,
+} from './listAttribution'
 
 export function viewItem(eventData: ProductViewData) {
   if (!shouldSendGA4Events()) return
@@ -97,7 +101,17 @@ export function viewItemList(eventData: ProductImpressionData) {
 
   const eventName = 'view_item_list'
 
-  const { list, impressions, item_list_id: itemListId } = eventData
+  const { list, impressions } = eventData
+  const itemListId = resolveItemListId(eventData.item_list_id, list)
+
+  saveListAttributions(
+    (impressions ?? []).map(({ product, position }) => ({
+      productId: product.productId,
+      listId: itemListId,
+      listName: list,
+      position,
+    }))
+  )
 
   const items = getImpressions(impressions, itemListId)
 
@@ -115,7 +129,8 @@ export function selectItem(eventData: ProductClickData) {
 
   const eventName = 'select_item'
 
-  const { product, list, position, item_list_id: itemListId } = eventData
+  const { product, list, position } = eventData
+  const itemListId = resolveItemListId(eventData.item_list_id, list)
 
   const {
     sku,
@@ -125,6 +140,15 @@ export function selectItem(eventData: ProductClickData) {
     categories,
     brand,
   } = product
+
+  saveListAttributions([
+    {
+      productId,
+      listId: itemListId,
+      listName: list,
+      position,
+    },
+  ])
 
   const { itemId: variant, referenceId, name } = sku
 
@@ -218,7 +242,9 @@ export function addToCart(eventData: AddToCartData) {
 
   const { items: eventDataItems, currency } = eventData
 
-  const { items, totalValue } = formatCartItemsAndValue(eventDataItems)
+  const { items, totalValue } = formatCartItemsAndValue(eventDataItems, {
+    useListAttribution: true,
+  })
 
   const data = {
     items,

@@ -5,6 +5,7 @@ import { Session, useRenderSession } from 'vtex.session-client'
 import { sendEnhancedEcommerceEvents } from './modules/enhancedEcommerceEvents'
 import { sendExtraEvents } from './modules/extraEvents'
 import { sendLegacyEvents } from './modules/legacyEvents'
+import { clearListAttributions } from './modules/listAttribution'
 import { PixelMessage } from './typings/events'
 
 const pageTypeByRouteId: Record<string, string> = {
@@ -94,6 +95,30 @@ export default function GoogleTagManager() {
   useEffect(() => {
     if (!loading) void setUserDataFromSession(session)
   }, [loading, session])
+  useEffect(() => {
+    let activeGroups = new Set(
+      (window.OnetrustActiveGroups ?? '').split(',').filter(Boolean)
+    )
+    const handleConsentChange = (event: Event) => {
+      const detail = (event as CustomEvent<string[]>).detail
+      const nextGroups = new Set(
+        Array.isArray(detail)
+          ? detail
+          : (window.OnetrustActiveGroups ?? '').split(',').filter(Boolean)
+      )
+
+      if ([...activeGroups].some(group => !nextGroups.has(group))) {
+        clearListAttributions()
+      }
+
+      activeGroups = nextGroups
+    }
+
+    window.addEventListener('OneTrustGroupsUpdated', handleConsentChange)
+
+    return () =>
+      window.removeEventListener('OneTrustGroupsUpdated', handleConsentChange)
+  }, [])
 
   return null
 }

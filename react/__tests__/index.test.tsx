@@ -38,6 +38,7 @@ const mockedUpdate = updateEcommerce as jest.Mock
 
 beforeEach(() => {
   mockedUpdate.mockReset()
+  window.sessionStorage.clear()
   window.dataLayer = [
     { pagetype: 'home', userData: { loggedStatus: 'guest' } },
   ]

@@ -3,6 +3,6 @@
     "component": "index"
   },
   "google-tag-manager-context": {
-    "component": "index"
+    "component": "GtmContext"
   }
 }

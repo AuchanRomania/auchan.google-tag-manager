@@ -338,7 +338,10 @@ export interface GA4ItemData {
   reviews_avg?: number
   in_stock?: boolean
   item_list_id?: string
+  item_list_name?: string
   item_category4?: string
+  index?: number
+  list?: string
 }
 
 interface CartItem extends GA4ItemData {
@@ -353,13 +356,16 @@ interface CartItem extends GA4ItemData {
   skuName: string
   price: number
   priceIsInt?: boolean
-  sellingPrice: number
+  sellingPrice?: number
+  listPrice?: number
   productId: string
   productRefId: string
   quantity: number
   skuId: string
   referenceId: string // SKU reference id
   variant: string
+  seller?: string
+  sellerId?: string
 }
 
 interface Totalizer {

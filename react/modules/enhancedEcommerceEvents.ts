@@ -36,6 +36,7 @@ import {
   customDimensionSkuAvailability,
   productViewSkuReference,
 } from './customDimensions'
+import { getSelectedStoreId } from './sessionStore'
 
 export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
   switch (e.data.eventName) {
@@ -49,8 +50,10 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
         categories,
       } = e.data.product
 
-      const productAvailableQuantity = getSeller(selectedSku.sellers)
-        .commertialOffer.AvailableQuantity
+      const seller = getSeller(selectedSku.sellers, getSelectedStoreId())
+      const productAvailableQuantity =
+        seller?.commertialOffer?.AvailableQuantity ??
+        seller?.commercialOffer?.AvailableQuantity
 
       const isAvailable = customDimensionSkuAvailability(
         productAvailableQuantity
@@ -62,7 +65,8 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
       let price
 
       try {
-        price = getSeller(selectedSku.sellers).commertialOffer.Price
+        price =
+          seller?.commertialOffer?.Price ?? seller?.commercialOffer?.Price
       } catch {
         price = undefined
       }
@@ -90,8 +94,8 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
         event: 'productDetail',
       }
 
-      viewItem(e.data)
       updateEcommerce('productDetail', data)
+      await viewItem(e.data)
 
       return
     }
@@ -113,8 +117,12 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
       let price
 
       try {
-        price = getSeller(sku?.sellers ?? product.items[0].sellers)
-          .commertialOffer.Price
+        const seller = getSeller(
+          sku?.sellers ?? product.items?.[0]?.sellers ?? []
+        )
+
+        price =
+          seller?.commertialOffer?.Price ?? seller?.commercialOffer?.Price
       } catch {
         price = undefined
       }
@@ -149,34 +157,7 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
     }
 
     case 'vtex:addToCart': {
-      const { items } = e.data
-
-      const data = {
-        ecommerce: {
-          add: {
-            products: items.map(item => ({
-              brand: item.brand,
-              category: item.category,
-              id: item.productId,
-              variant: item.skuId,
-              name: item.name, // Product name
-              price:
-                item.priceIsInt === true
-                  ? `${item.price / 100}`
-                  : `${item.price}`,
-              quantity: item.quantity,
-              dimension1: item.productRefId ?? '',
-              dimension2: item.referenceId ?? '', // SKU reference id
-              dimension3: item.variant, // SKU name (variant)
-            })),
-          },
-          currencyCode: e.data.currency,
-        },
-        event: 'addToCart',
-      }
-
       addToCart(e.data)
-      updateEcommerce('addToCart', data)
 
       return
     }
@@ -262,7 +243,17 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
         },
       }
 
-      viewItemList(e.data)
+      const themeListActive = Boolean(
+        (window as Window & {
+          __auchanViewItemList?: { active?: boolean }
+        }).__auchanViewItemList?.active
+      )
+      const hasListId = Boolean(e.data.item_list_id)
+
+      if (!themeListActive || hasListId) {
+        viewItemList(e.data)
+      }
+
       updateEcommerce('productImpression', data)
 
       return
@@ -289,37 +280,13 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
     }
 
     case 'vtex:promoView': {
-      const { promotions } = e.data
-
-      const data = {
-        event: 'promoView',
-        ecommerce: {
-          promoView: {
-            promotions,
-          },
-        },
-      }
-
       viewPromotion(e.data)
-      updateEcommerce('promoView', data)
 
       break
     }
 
     case 'vtex:promotionClick': {
-      const { promotions } = e.data
-
-      const data = {
-        event: 'promotionClick',
-        ecommerce: {
-          promoClick: {
-            promotions,
-          },
-        },
-      }
-
       selectPromotion(e.data)
-      updateEcommerce('promotionClick', data)
 
       break
     }
@@ -430,6 +397,11 @@ function getCheckoutProductObjectData(
   item: CartItem
 ): AnalyticsEcommerceProduct {
   const productName = getProductNameWithoutVariant(item.name, item.skuName)
+  const unitPrice =
+    item.sellingPrice != null && item.sellingPrice > 0
+      ? item.sellingPrice
+      : item.price
+  const priceIsInt = item.priceIsInt ?? item.sellingPrice != null
 
   return {
     id: item.productId, // Product id
@@ -437,7 +409,7 @@ function getCheckoutProductObjectData(
     name: productName, // Product name without variant
     category: item.category,
     brand: item.additionalInfo?.brandName ?? '',
-    price: item.sellingPrice / 100,
+    price: priceIsInt ? unitPrice / 100 : unitPrice,
     quantity: item.quantity,
     dimension1: item.productRefId ?? '',
     dimension2: item.referenceId ?? '', // SKU reference id

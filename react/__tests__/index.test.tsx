@@ -6,12 +6,13 @@ import productDetails from '../__mocks__/productDetail'
 import productClick from '../__mocks__/productClick'
 import { buildViewPromotionData } from '../__mocks__/viewPromotion'
 import {
-  default as GoogleTagManager,
   setPageTypeFromRoute,
   setUserDataFromSession,
   handleEvents,
 } from '../index'
+import GtmContext from '../GtmContext'
 import updateEcommerce from '../modules/updateEcommerce'
+import { setSelectedStoreId } from '../modules/sessionStore'
 import {
   Promotion,
   PromotionClickData,
@@ -38,15 +39,21 @@ const mockedUpdate = updateEcommerce as jest.Mock
 
 beforeEach(() => {
   mockedUpdate.mockReset()
+  setSelectedStoreId(undefined)
+  sessionStorage.clear()
   window.dataLayer = [
     { pagetype: 'home', userData: { loggedStatus: 'guest' } },
   ]
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: false,
+    json: async () => ({}),
+  }) as jest.Mock
 })
 
 test('initializes pagetype and guest userData when the block is mounted', () => {
   window.dataLayer = [{ existing: true }]
 
-  render(<GoogleTagManager />)
+  render(<GtmContext />)
 
   expect(window.dataLayer[0]).toEqual({
     existing: true,
@@ -196,12 +203,12 @@ test('productImpression', () => {
   })
 })
 
-test('productDetail', () => {
+test('productDetail', async () => {
   const message = new MessageEvent('message', {
     data: productDetails,
   })
 
-  handleEvents(message)
+  await handleEvents(message)
 
   expect(updateEcommerce).toHaveBeenCalledWith('productDetail', {
     event: 'productDetail',
@@ -326,14 +333,34 @@ describe('GA4 events', () => {
         },
       })
     })
-  })
 
-  describe('view_item', () => {
-    it('sends an event that signifies that some content was shown to the user', () => {
-      const message = new MessageEvent('message', { data: productDetails })
+    it('derives item_list_id from list name when pixel omits it', () => {
+      const { item_list_id: _omit, ...withoutListId } = productImpressionData
+      const message = new MessageEvent('message', {
+        data: { ...withoutListId, list: 'Home Recommended' },
+      })
 
       handleEvents(message)
 
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item_list',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            item_list_name: 'Home Recommended',
+            item_list_id: 'home-recommended',
+          }),
+        })
+      )
+    })
+  })
+
+  describe('view_item', () => {
+    it('sends an event that signifies that some content was shown to the user', async () => {
+      const message = new MessageEvent('message', { data: productDetails })
+
+      await handleEvents(message)
+
+      expect(global.fetch).not.toHaveBeenCalled()
       expect(mockedUpdate).toHaveBeenCalledWith('view_item', {
         ecommerce: {
           currency: 'USD',
@@ -364,6 +391,182 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('enriches view_item with session store, fetched reviews and categoryTree depth', async () => {
+      setSelectedStoreId('pickup-store-42')
+      ;(global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: {
+            averageRatingByProductId: {
+              average: 4.2,
+              total: 11,
+            },
+          },
+        }),
+      })
+
+      const data = {
+        ...productDetails,
+        product: {
+          ...productDetails.product,
+          reviews_number: undefined,
+          reviews_avg: undefined,
+          categoryTree: [
+            { id: '1', name: 'Bauturi si Tutun' },
+            { id: '2', name: 'Apa' },
+            { id: '3', name: 'Apa plata' },
+            { id: '4', name: 'Apa de izvor' },
+          ],
+          selectedSku: {
+            ...productDetails.product.selectedSku,
+            item_store: undefined,
+            item_category4: undefined,
+            in_stock: undefined,
+            sellers: [
+              {
+                ...productDetails.product.selectedSku.sellers[0],
+                sellerId: 'pickup-store-42',
+                sellerDefault: true,
+              },
+            ],
+          },
+        },
+        item_list_id: undefined,
+      }
+
+      await handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                item_store: 'pickup-store-42',
+                in_stock: true,
+                reviews_number: 11,
+                reviews_avg: 4.2,
+                item_category: 'Bauturi si Tutun',
+                item_category2: 'Apa',
+                item_category3: 'Apa plata',
+                item_category4: 'Apa de izvor',
+              }),
+            ],
+          }),
+        })
+      )
+    })
+
+    it('uses price and stock from the selected store seller', async () => {
+      setSelectedStoreId('rouqaauchanbrasovcoresi18')
+
+      const data = {
+        ...productDetails,
+        product: {
+          ...productDetails.product,
+          selectedSku: {
+            ...productDetails.product.selectedSku,
+            item_store: undefined,
+            in_stock: undefined,
+            sellers: [
+              {
+                ...productDetails.product.selectedSku.sellers[0],
+                sellerId: '1',
+                sellerDefault: true,
+                commertialOffer: {
+                  ...productDetails.product.selectedSku.sellers[0]
+                    .commertialOffer,
+                  Price: 0,
+                  AvailableQuantity: 0,
+                },
+              },
+              {
+                ...productDetails.product.selectedSku.sellers[0],
+                sellerId: 'rouqaauchanbrasovcoresi18',
+                sellerDefault: false,
+                sellerName: 'Auchan Brasov',
+                commertialOffer: {
+                  ...productDetails.product.selectedSku.sellers[0]
+                    .commertialOffer,
+                  Price: 3.99,
+                  AvailableQuantity: 8,
+                },
+              },
+            ],
+          },
+        },
+      }
+
+      await handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            currency: 'USD',
+            value: 3.99,
+            items: [
+              expect.objectContaining({
+                item_store: 'rouqaauchanbrasovcoresi18',
+                in_stock: true,
+                price: 3.99,
+                quantity: 1,
+                dimension4: 'available',
+              }),
+            ],
+          }),
+        })
+      )
+    })
+
+    it('uses priced seller as item_store when session store seller is missing on SKU', async () => {
+      setSelectedStoreId('rouqaauchanbrasovcoresi18')
+
+      const data = {
+        ...productDetails,
+        product: {
+          ...productDetails.product,
+          selectedSku: {
+            ...productDetails.product.selectedSku,
+            item_store: undefined,
+            in_stock: undefined,
+            sellers: [
+              {
+                ...productDetails.product.selectedSku.sellers[0],
+                sellerId: '1',
+                sellerDefault: true,
+                commertialOffer: {
+                  ...productDetails.product.selectedSku.sellers[0]
+                    .commertialOffer,
+                  Price: 3.99,
+                  AvailableQuantity: 5,
+                },
+              },
+            ],
+          },
+        },
+      }
+
+      await handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            value: 3.99,
+            items: [
+              expect.objectContaining({
+                item_store: '1',
+                in_stock: true,
+                price: 3.99,
+                quantity: 1,
+              }),
+            ],
+          }),
+        })
+      )
     })
   })
 
@@ -401,6 +604,46 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('enriches list attribution from sessionStorage when pixel omits item_list_id', () => {
+      sessionStorage.setItem(
+        'ga4:listAttr:v1',
+        JSON.stringify({
+          '16': {
+            listId: 'category-bere-doza',
+            listName: 'Bere doza',
+            position: 5,
+            ts: Date.now(),
+          },
+        })
+      )
+
+      const { item_list_id: _omit, ...clickWithoutListId } = productClick
+
+      const message = new MessageEvent('message', {
+        data: { ...clickWithoutListId, list: undefined, position: undefined },
+      })
+
+      handleEvents(message)
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'select_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            item_list_id: 'category-bere-doza',
+            item_list_name: 'Bere doza',
+            items: [
+              expect.objectContaining({
+                item_id: '16',
+                item_list_id: 'category-bere-doza',
+                item_list_name: 'Bere doza',
+                index: 5,
+              }),
+            ],
+          }),
+        })
+      )
     })
   })
 
@@ -514,6 +757,7 @@ describe('GA4 events', () => {
               in_stock: false,
               quantity: 1,
               price: 197.99,
+              discount: 0,
               dimension1: '123',
               dimension2: '456',
               dimension3: 'Red',
@@ -528,6 +772,7 @@ describe('GA4 events', () => {
               item_category2: 'Tables',
               quantity: 2,
               price: 150.9,
+              discount: 0,
               dimension1: '789',
               dimension2: '101',
               dimension3: 'Blue',
@@ -536,6 +781,137 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('uses selling/list prices for discount and pixel list attribution (then consumes)', () => {
+      sessionStorage.setItem(
+        'ga4:listAttr:v1',
+        JSON.stringify({
+          'prod-1': {
+            listId: 'category-bere-doza',
+            listName: 'Bere doza',
+            position: 2,
+            ts: Date.now(),
+          },
+        })
+      )
+
+      const data: AddToCartData = {
+        currency: 'RON',
+        event: 'addToCart',
+        eventName: 'vtex:addToCart',
+        items: [
+          {
+            productId: 'prod-1',
+            skuId: 'sku-1',
+            brand: 'Ursus',
+            name: 'Bere doza Ursus',
+            skuName: '0.5 l',
+            price: 350,
+            sellingPrice: 350,
+            listPrice: 500,
+            priceIsInt: true,
+            category: 'Bauturi si Tutun/Bere si cidru/Bere doza',
+            quantity: 1,
+            productRefId: 'ref',
+            referenceId: 'sku-ref',
+            variant: '0.5 l',
+            item_list_id: 'category-bere-doza',
+            item_list_name: 'Bere doza',
+            index: 2,
+          } as CartItem,
+        ],
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'add_to_cart',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            currency: 'RON',
+            value: 3.5,
+            items: [
+              expect.objectContaining({
+                item_id: 'prod-1',
+                price: 3.5,
+                discount: 1.5,
+                item_category: 'Bauturi si Tutun',
+                item_category2: 'Bere si cidru',
+                item_category3: 'Bere doza',
+                item_list_id: 'category-bere-doza',
+                item_list_name: 'Bere doza',
+                index: 2,
+              }),
+            ],
+          }),
+        })
+      )
+
+      const remaining = JSON.parse(
+        sessionStorage.getItem('ga4:listAttr:v1') || '{}'
+      )
+
+      expect(remaining['prod-1']).toBeUndefined()
+    })
+
+    it('does not attach or consume list attribution without pixel list fields', () => {
+      sessionStorage.setItem(
+        'ga4:listAttr:v1',
+        JSON.stringify({
+          'prod-1': {
+            listId: 'category-bere-doza',
+            listName: 'Bere doza',
+            position: 2,
+            ts: Date.now(),
+          },
+        })
+      )
+
+      const data: AddToCartData = {
+        currency: 'RON',
+        event: 'addToCart',
+        eventName: 'vtex:addToCart',
+        items: [
+          {
+            productId: 'prod-1',
+            skuId: 'sku-1',
+            brand: 'Ursus',
+            name: 'Bere doza Ursus',
+            skuName: '0.5 l',
+            price: 350,
+            sellingPrice: 350,
+            listPrice: 500,
+            priceIsInt: true,
+            category: 'Bauturi si Tutun/Bere si cidru/Bere doza',
+            quantity: 1,
+            productRefId: 'ref',
+            referenceId: 'sku-ref',
+            variant: '0.5 l',
+          } as CartItem,
+        ],
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'add_to_cart',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            items: [
+              expect.not.objectContaining({
+                item_list_id: 'category-bere-doza',
+              }),
+            ],
+          }),
+        })
+      )
+
+      const remaining = JSON.parse(
+        sessionStorage.getItem('ga4:listAttr:v1') || '{}'
+      )
+
+      expect(remaining['prod-1']).toBeDefined()
     })
   })
 
@@ -594,6 +970,7 @@ describe('GA4 events', () => {
               item_category: 'Home & Decor',
               quantity: 3,
               price: 197.99,
+              discount: 0,
               dimension1: '123',
               dimension2: '456',
               dimension3: 'Red',
@@ -711,6 +1088,7 @@ describe('GA4 events', () => {
               item_category: 'Home & Decor',
               quantity: 1,
               price: 197.99,
+              discount: 0,
               dimension1: '123',
               dimension2: '456',
               dimension3: 'Red',
@@ -743,6 +1121,7 @@ describe('GA4 events', () => {
               item_category: 'Home & Decor',
               quantity: 1,
               price: 197.99,
+              discount: 0,
               dimension1: '123',
               dimension2: '456',
               dimension3: 'Red',
@@ -757,6 +1136,7 @@ describe('GA4 events', () => {
               item_category2: 'Tables',
               quantity: 3,
               price: 150.9,
+              discount: 0,
               dimension1: '789',
               dimension2: '101',
               dimension3: 'Blue',
@@ -769,6 +1149,57 @@ describe('GA4 events', () => {
   })
 
   describe('view_cart', () => {
+    it('uses category names and ignores legacy productCategoryIds maps', () => {
+      const data = {
+        eventName: 'vtex:viewCart',
+        event: 'viewCart',
+        currency: 'USD',
+        items: [
+          {
+            productId: '1',
+            skuId: '10',
+            additionalInfo: { brandName: 'Auchan' },
+            name: 'Apa 5l',
+            skuName: 'Apa 5l',
+            price: 399,
+            category: 'Bauturi si Tutun/Apa/Apa plata',
+            productCategories: { '25': '25', '32': '32', '40': '40' },
+            productCategoryIds: '/25/32/40/',
+            quantity: 1,
+            productRefId: 'ref',
+            referenceId: 'sku-ref',
+            variant: 'Default',
+          },
+        ],
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith('view_cart', {
+        ecommerce: {
+          currency: 'USD',
+          value: 3.99,
+          items: [
+            expect.objectContaining({
+              item_id: '1',
+              item_category: 'Bauturi si Tutun',
+              item_category2: 'Apa',
+              item_category3: 'Apa plata',
+            }),
+          ],
+        },
+      })
+
+      const pushedItems = mockedUpdate.mock.calls.find(
+        ([eventName]) => eventName === 'view_cart'
+      )?.[1]?.ecommerce?.items
+
+      expect(pushedItems?.[0]).not.toEqual(
+        expect.objectContaining({ item_category: '25' })
+      )
+      expect(pushedItems?.[0]).not.toHaveProperty('item_category4')
+    })
+
     it('sends an event when a user opens the cart with items', () => {
       const data = viewCartWithItemsMock
 
@@ -789,6 +1220,7 @@ describe('GA4 events', () => {
               item_category: 'Home & Decor',
               quantity: 2,
               price: 197.99,
+              discount: 0,
               dimension1: '123',
               dimension2: '456',
               dimension3: 'Red',
@@ -803,6 +1235,7 @@ describe('GA4 events', () => {
               item_category2: 'Tables',
               quantity: 1,
               price: 150.9,
+              discount: 0,
               dimension1: '789',
               dimension2: '101',
               dimension3: 'Blue',
@@ -888,6 +1321,7 @@ describe('GA4 events', () => {
               item_category: 'Home & Decor',
               quantity: 1,
               price: 197.99,
+              discount: 0,
               dimension1: '123',
               dimension2: '456',
               dimension3: 'Red',
@@ -965,6 +1399,8 @@ describe('GA4 events', () => {
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
               item_store: '1',
+              reviews_number: 24,
+              reviews_avg: 4.5,
               in_stock: true,
               item_list_id: 'category-10',
               dimension1: '123',

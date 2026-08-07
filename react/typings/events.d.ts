@@ -339,8 +339,9 @@ export interface GA4ItemData {
   in_stock?: boolean
   item_list_id?: string
   item_list_name?: string
-  index?: number
   item_category4?: string
+  index?: number
+  list?: string
 }
 
 interface CartItem extends GA4ItemData {
@@ -355,7 +356,8 @@ interface CartItem extends GA4ItemData {
   skuName: string
   price: number
   priceIsInt?: boolean
-  sellingPrice: number
+  sellingPrice?: number
+  listPrice?: number
   originalPrice?: number
   discount?: number
   categories?: string[]
@@ -365,6 +367,8 @@ interface CartItem extends GA4ItemData {
   skuId: string
   referenceId: string // SKU reference id
   variant: string
+  seller?: string
+  sellerId?: string
 }
 
 interface Totalizer {

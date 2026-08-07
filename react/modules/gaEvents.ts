@@ -1,5 +1,6 @@
 import {
   AddToCartData,
+  CartItem,
   RemoveFromCartData,
   PromoViewData,
   OrderPlacedData,
@@ -22,7 +23,6 @@ import updateEcommerce from './updateEcommerce'
 import {
   getPrice,
   getSeller,
-  getCategoriesWithHierarchy,
   getQuantity,
   getImpressions,
   getDiscount,
@@ -30,22 +30,36 @@ import {
   getPurchaseItems,
   formatCartItemsAndValue,
   getGA4ItemFields,
-  getReviewFields,
   getSellerItemFields,
+  getProductCategoriesHierarchy,
+  getCategoriesWithHierarchy,
+  listIdFromListName,
 } from './utils'
 import { customDimensions, productViewSkuReference } from './customDimensions'
-import shouldSendGA4Events from './utils/shouldSendGA4Events'
 import {
+  resolveListAttribution,
+  consumeListAttributions,
   resolveItemListId,
   saveListAttributions,
 } from './listAttribution'
+import shouldSendGA4Events from './utils/shouldSendGA4Events'
+import { getSessionItemStoreFields, getSelectedStoreId } from './sessionStore'
+import { fetchProductReviewFields } from './reviews'
 
-export function viewItem(eventData: ProductViewData) {
+export async function viewItem(eventData: ProductViewData) {
   if (!shouldSendGA4Events()) return
 
   const eventName = 'view_item'
 
-  const { currency, product, list, item_list_id: itemListId } = eventData
+  const { currency, product } = eventData
+  const {
+    list,
+    item_list_id: itemListId,
+  } = resolveListAttribution({
+    productId: product?.productId,
+    list: eventData.list,
+    item_list_id: eventData.item_list_id,
+  })
 
   const {
     selectedSku,
@@ -53,16 +67,30 @@ export function viewItem(eventData: ProductViewData) {
     productId,
     productReference,
     categories,
+    categoryTree,
     brand,
   } = product
 
   const { itemId: variant } = selectedSku
 
-  const seller = getSeller(selectedSku.sellers)
+  const preferredStoreId = getSelectedStoreId()
+  const seller = getSeller(selectedSku.sellers, preferredStoreId)
   const value = getPrice(seller)
-  const categoriesHierarchy = getCategoriesWithHierarchy(categories)
+  const categoriesHierarchy = getProductCategoriesHierarchy(
+    categories,
+    categoryTree
+  )
   const discount = getDiscount(seller)
   const quantity = getQuantity(seller)
+  const reviewFields = await fetchProductReviewFields(productId, product)
+  const sellerFields = getSellerItemFields(seller)
+
+  const itemStoreFields =
+    preferredStoreId && seller?.sellerId === preferredStoreId
+      ? { item_store: preferredStoreId }
+      : sellerFields.item_store
+      ? { item_store: sellerFields.item_store }
+      : getSessionItemStoreFields()
 
   const item = {
     item_id: productId,
@@ -76,8 +104,9 @@ export function viewItem(eventData: ProductViewData) {
     ...categoriesHierarchy,
     ...getGA4ItemFields(product),
     ...getGA4ItemFields(selectedSku),
-    ...getSellerItemFields(seller),
-    ...getReviewFields(product),
+    ...sellerFields,
+    ...itemStoreFields,
+    ...reviewFields,
     ...(itemListId ? { item_list_id: itemListId } : {}),
     ...customDimensions({
       productReference,
@@ -101,8 +130,9 @@ export function viewItemList(eventData: ProductImpressionData) {
 
   const eventName = 'view_item_list'
 
-  const { list, impressions } = eventData
-  const itemListId = resolveItemListId(eventData.item_list_id, list)
+  const { list, impressions, item_list_id: rawItemListId } = eventData
+  const itemListId =
+    resolveItemListId(rawItemListId, list) || listIdFromListName(list)
 
   saveListAttributions(
     (impressions ?? []).map(({ product, position }) => ({
@@ -129,8 +159,17 @@ export function selectItem(eventData: ProductClickData) {
 
   const eventName = 'select_item'
 
-  const { product, list, position } = eventData
-  const itemListId = resolveItemListId(eventData.item_list_id, list)
+  const { product } = eventData
+  const {
+    list,
+    item_list_id: itemListId,
+    position,
+  } = resolveListAttribution({
+    productId: product?.productId,
+    list: eventData.list,
+    item_list_id: eventData.item_list_id,
+    position: eventData.position,
+  })
 
   const {
     sku,
@@ -159,7 +198,7 @@ export function selectItem(eventData: ProductClickData) {
   const quantity = getQuantity(seller)
 
   const item = {
-    item_id: productId,
+    item_id: productId, 
     item_name: productName,
     item_list_name: list,
     item_brand: brand,
@@ -229,7 +268,7 @@ export function viewPromotion(eventData: PromoViewData) {
     creative_slot: position,
     promotion_id: id,
     promotion_name: name,
-    items,
+    ...(items.length ? { items } : {}),
   }
 
   updateEcommerce(eventName, { ecommerce: data })
@@ -243,7 +282,7 @@ export function addToCart(eventData: AddToCartData) {
   const { items: eventDataItems, currency } = eventData
 
   const { items, totalValue } = formatCartItemsAndValue(eventDataItems, {
-    useListAttribution: true,
+    useStoredListAttribution: false,
   })
 
   const data = {
@@ -253,6 +292,19 @@ export function addToCart(eventData: AddToCartData) {
   }
 
   updateEcommerce(eventName, { ecommerce: data })
+
+  consumeListAttributions(
+    (eventDataItems || [])
+      .filter(
+        item =>
+          Boolean(
+            item.item_list_id ||
+              (item as CartItem & { item_list_name?: string }).item_list_name ||
+              (item as CartItem & { list?: string }).list
+          )
+      )
+      .map(item => item.productId)
+  )
 }
 
 export function removeFromCart(eventData: RemoveFromCartData) {

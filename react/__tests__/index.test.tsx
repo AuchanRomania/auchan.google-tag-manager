@@ -855,7 +855,7 @@ describe('GA4 events', () => {
       expect(remaining['prod-1']).toBeUndefined()
     })
 
-    it('does not attach or consume list attribution without pixel list fields', () => {
+    it('attaches and consumes stored list attribution when pixel omits list fields', () => {
       sessionStorage.setItem(
         'ga4:listAttr:v1',
         JSON.stringify({
@@ -899,8 +899,10 @@ describe('GA4 events', () => {
         expect.objectContaining({
           ecommerce: expect.objectContaining({
             items: [
-              expect.not.objectContaining({
+              expect.objectContaining({
                 item_list_id: 'category-bere-doza',
+                item_list_name: 'Bere doza',
+                index: 2,
               }),
             ],
           }),
@@ -911,7 +913,7 @@ describe('GA4 events', () => {
         sessionStorage.getItem('ga4:listAttr:v1') || '{}'
       )
 
-      expect(remaining['prod-1']).toBeDefined()
+      expect(remaining['prod-1']).toBeUndefined()
     })
   })
 

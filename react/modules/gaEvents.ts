@@ -1,6 +1,5 @@
 import {
   AddToCartData,
-  CartItem,
   RemoveFromCartData,
   PromoViewData,
   OrderPlacedData,
@@ -282,7 +281,7 @@ export function addToCart(eventData: AddToCartData) {
   const { items: eventDataItems, currency } = eventData
 
   const { items, totalValue } = formatCartItemsAndValue(eventDataItems, {
-    useStoredListAttribution: false,
+    useStoredListAttribution: true,
   })
 
   const data = {
@@ -293,18 +292,7 @@ export function addToCart(eventData: AddToCartData) {
 
   updateEcommerce(eventName, { ecommerce: data })
 
-  consumeListAttributions(
-    (eventDataItems || [])
-      .filter(
-        item =>
-          Boolean(
-            item.item_list_id ||
-              (item as CartItem & { item_list_name?: string }).item_list_name ||
-              (item as CartItem & { list?: string }).list
-          )
-      )
-      .map(item => item.productId)
-  )
+  consumeListAttributions((eventDataItems || []).map(item => item.productId))
 }
 
 export function removeFromCart(eventData: RemoveFromCartData) {
@@ -405,6 +393,8 @@ export function addShippingInfo(eventData: AddShippingInfoData) {
 }
 
 export function viewCart(eventData: ViewCartData) {
+  if (!shouldSendGA4Events()) return
+
   const eventName = 'view_cart'
 
   const { currency, items: eventDataItems } = eventData

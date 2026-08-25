@@ -609,7 +609,7 @@ const productWishlist = {
       __typename: 'Product',
       benefits: [],
       sku: {
-        item_store: '1',
+        item_store: 'selected-store',
         in_stock: true,
         itemId: '35',
         name: 'Classic Pink',

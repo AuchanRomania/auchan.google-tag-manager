@@ -608,7 +608,7 @@ const productDetail = {
     __typename: 'Product',
     benefits: [],
     selectedSku: {
-      item_store: '1',
+      item_store: 'selected-store',
       in_stock: true,
       item_category4: 'Running',
       itemId: '35',

@@ -178,7 +178,7 @@ const productClick = {
     properties: [],
     __typename: 'Product',
     sku: {
-      item_store: '1',
+      item_store: 'selected-store',
       in_stock: true,
       name: 'Classic Pink',
       itemId: '35',

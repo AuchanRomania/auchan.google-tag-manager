@@ -5,4 +5,8 @@ interface Window extends Window {
   __gtm__: {
     sendGA4Events: boolean
   }
+
+  __auchanViewItemList?: {
+    active?: boolean
+  }
 }

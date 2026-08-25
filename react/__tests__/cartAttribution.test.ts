@@ -56,6 +56,7 @@ it('formats discounted cart items with categories and list attribution', () => {
         item_category: 'Groceries',
         item_category2: 'Drinks',
         item_category3: 'Coffee',
+        item_category4: '',
         item_list_id: 'category-10',
         item_list_name: 'Coffee',
         index: 3,
@@ -70,7 +71,14 @@ it('formats discounted cart items with categories and list attribution', () => {
     ],
   })
 
-  expect(window.sessionStorage.getItem('ga4:listAttr:v1')).toBe('{}')
+  expect(
+    formatCartItemsAndValue([cartItem], { useListAttribution: true }).items[0]
+  ).toMatchObject({
+    item_list_id: 'category-10',
+    item_list_name: 'Coffee',
+    index: 3,
+  })
+  expect(window.sessionStorage.getItem('ga4:listAttr:v1')).not.toBe('{}')
 })
 
 it('prefers explicit list attribution from the event payload', () => {
@@ -102,7 +110,7 @@ it('prefers explicit list attribution from the event payload', () => {
   })
 })
 
-it('keeps the first attribution until it is consumed', () => {
+it('keeps the most recent attribution until it is explicitly consumed', () => {
   saveListAttributions([
     {
       productId: 'product-1',
@@ -111,20 +119,23 @@ it('keeps the first attribution until it is consumed', () => {
       position: 3,
     },
   ])
-  saveListAttributions([
-    {
-      productId: 'product-1',
-      listId: 'search-coffee',
-      listName: 'Search',
-      position: 7,
-    },
-  ])
+  saveListAttributions(
+    [
+      {
+        productId: 'product-1',
+        listId: 'search-coffee',
+        listName: 'Search',
+        position: 7,
+      },
+    ],
+    { overwrite: true }
+  )
 
   expect(consumeListAttributions(['product-1'])).toMatchObject({
     'product-1': {
-      listId: 'category-10',
-      listName: 'Category',
-      position: 3,
+      listId: 'search-coffee',
+      listName: 'Search',
+      position: 7,
     },
   })
   expect(consumeListAttributions(['product-1'])).toEqual({})

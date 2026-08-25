@@ -154,6 +154,7 @@ export interface ProductClickData extends EventData {
   position: number
   list?: string
   item_list_id?: string
+  item_list_name?: string
 }
 
 export interface ProductImpressionData extends EventData {
@@ -164,6 +165,8 @@ export interface ProductImpressionData extends EventData {
   position?: number // deprecated, use impressions list!
   list: string
   item_list_id?: string
+  item_list_name?: string
+  auchanListTracker?: true
 }
 
 export interface CartLoadedData extends EventData {

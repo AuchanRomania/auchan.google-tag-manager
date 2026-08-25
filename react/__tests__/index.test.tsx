@@ -29,6 +29,11 @@ import {
 } from '../__mocks__/viewCart'
 import { transaction, refundTransaction } from '../__mocks__/transaction'
 import productWishlist from '../__mocks__/addToWishlist'
+import {
+  setSelectedStoreId,
+  syncSelectedStoreFromSession,
+} from '../modules/sessionStore'
+import { saveListAttributions } from '../modules/listAttribution'
 
 jest.mock('../modules/utils/shouldSendGA4Events')
 
@@ -38,7 +43,10 @@ const mockedUpdate = updateEcommerce as jest.Mock
 
 beforeEach(() => {
   mockedUpdate.mockReset()
+  delete window.__auchanViewItemList
   window.sessionStorage.clear()
+  window.localStorage.clear()
+  setSelectedStoreId()
   window.dataLayer = [
     { pagetype: 'home', userData: { loggedStatus: 'guest' } },
   ]
@@ -95,10 +103,12 @@ test('emits guest userData in dataLayer[0]', () => {
     },
   })
 
-  expect(window.dataLayer[0]).toEqual({
-    pagetype: 'home',
-    userData: { loggedStatus: 'guest' },
-  })
+  expect(window.dataLayer).toEqual([
+    {
+      pagetype: 'home',
+      userData: { loggedStatus: 'guest' },
+    },
+  ])
 })
 
 test('emits logged user identity without exposing the raw email', async () => {
@@ -130,24 +140,28 @@ test('emits logged user identity without exposing the raw email', async () => {
     },
   })
 
-  expect(window.dataLayer[0]).toEqual({
-    pagetype: 'product',
-    userData: {
-      loggedStatus: 'logged',
-      userId: 'user-123',
+  expect(window.dataLayer).toEqual([
+    {
+      pagetype: 'product',
+      userData: {
+        loggedStatus: 'logged',
+        userId: 'user-123',
+      },
     },
-  })
+  ])
 
   await userDataReady
 
-  expect(window.dataLayer[0]).toEqual({
-    pagetype: 'product',
-    userData: {
-      loggedStatus: 'logged',
-      userId: 'user-123',
-      emailHash: 'abcd',
+  expect(window.dataLayer).toEqual([
+    {
+      pagetype: 'product',
+      userData: {
+        loggedStatus: 'logged',
+        userId: 'user-123',
+        emailHash: 'abcd',
+      },
     },
-  })
+  ])
   expect(
     String.fromCharCode(...new Uint8Array(digest.mock.calls[0][1]))
   ).toBe('user@example.com')
@@ -195,6 +209,54 @@ test('productImpression', () => {
       ],
     },
   })
+})
+
+test('ignores native generic GA4 impressions while the theme list tracker is active', () => {
+  const mockedShouldSendGA4Events = shouldSendGA4Events as jest.Mock
+
+  mockedShouldSendGA4Events.mockReturnValue(true)
+  window.__auchanViewItemList = { active: true }
+  const genericImpression = { ...productImpressionData }
+
+  delete genericImpression.item_list_id
+
+  handleEvents(
+    new MessageEvent('message', {
+      data: genericImpression,
+    })
+  )
+
+  expect(mockedUpdate).not.toHaveBeenCalled()
+  expect(mockedUpdate).not.toHaveBeenCalledWith(
+    'view_item_list',
+    expect.anything()
+  )
+
+  handleEvents(
+    new MessageEvent('message', {
+      data: {
+        ...productImpressionData,
+        item_list_name: 'Shelf',
+        auchanListTracker: true as const,
+      },
+    })
+  )
+
+  expect(mockedUpdate).toHaveBeenCalledTimes(1)
+  expect(mockedUpdate).toHaveBeenCalledWith(
+    'view_item_list',
+    expect.objectContaining({
+      ecommerce: expect.objectContaining({
+        item_list_id: 'shelf-home',
+        item_list_name: 'Shelf',
+      }),
+    })
+  )
+  expect(
+    mockedUpdate.mock.calls.filter(([eventName]) =>
+      eventName === 'productImpression'
+    )
+  ).toHaveLength(0)
 })
 
 test('productDetail', () => {
@@ -291,12 +353,14 @@ describe('GA4 events', () => {
               item_brand: 'Mizuno',
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
+              item_category4: '',
               item_id: '16',
               item_name: 'Classic Shoes Top',
               item_variant: '35',
-              item_store: '1',
+              item_store: 'selected-store',
               in_stock: true,
               item_list_id: 'shelf-home',
+              item_list_name: 'Shelf',
               price: 38.9,
               quantity: 1,
               dimension1: '12531',
@@ -310,12 +374,14 @@ describe('GA4 events', () => {
               item_brand: 'Nintendo',
               item_category: 'Apparel & Accessories',
               item_category2: 'Watches',
+              item_category4: '',
               item_id: '15',
               item_name: 'Gorgeous Top Watch',
               item_variant: '32',
-              item_store: '1',
+              item_store: 'selected-store',
               in_stock: false,
               item_list_id: 'shelf-home',
+              item_list_name: 'Shelf',
               price: 2200,
               quantity: 0,
               dimension1: '',
@@ -326,6 +392,43 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('uses the specific shelf title instead of the generic homepage list', () => {
+      const data = {
+        ...productImpressionData,
+        list: 'Home Shelf',
+        item_list_id: 'home-shelf',
+        impressions: productImpressionData.impressions.map(impression => ({
+          ...impression,
+          product: {
+            ...impression.product,
+            sku: {
+              ...impression.product.sku,
+              item_list_name: 'Reduceri MyClub',
+              item_list_id: 'reduceri-myclub',
+            },
+          },
+        })),
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item_list',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            item_list_name: 'Reduceri MyClub',
+            item_list_id: 'reduceri-myclub',
+            items: expect.arrayContaining([
+              expect.objectContaining({
+                item_list_name: 'Reduceri MyClub',
+                item_list_id: 'reduceri-myclub',
+              }),
+            ]),
+          }),
+        })
+      )
     })
   })
 
@@ -352,7 +455,7 @@ describe('GA4 events', () => {
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
               item_category4: 'Running',
-              item_store: '1',
+              item_store: 'selected-store',
               reviews_number: 24,
               reviews_avg: 4.5,
               in_stock: true,
@@ -365,6 +468,71 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('uses the selected store for item_store, price and stock', () => {
+      syncSelectedStoreFromSession({
+        namespaces: {
+          public: {
+            deliveryMethods: {
+              value: JSON.stringify({ selectedStoreId: 'pickup-store-42' }),
+            },
+          },
+        },
+      })
+
+      const selectedSku = productDetails.product.selectedSku
+      const data = {
+        ...productDetails,
+        list: undefined,
+        product: {
+          ...productDetails.product,
+          selectedSku: {
+            ...selectedSku,
+            item_store: undefined,
+            sellers: [
+              {
+                ...selectedSku.sellers[0],
+                sellerId: '1',
+                sellerDefault: true,
+              },
+              {
+                ...selectedSku.sellers[0],
+                sellerId: 'pickup-store-42',
+                sellerDefault: false,
+                commertialOffer: {
+                  ...selectedSku.sellers[0].commertialOffer,
+                  Price: 3.99,
+                  AvailableQuantity: 8,
+                },
+              },
+            ],
+          },
+        },
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            value: 3.99,
+            items: [
+              expect.objectContaining({
+                item_store: 'pickup-store-42',
+                price: 3.99,
+                in_stock: true,
+              }),
+            ],
+          }),
+        })
+      )
+
+      expect(
+        mockedUpdate.mock.calls.find(call => call[0] === 'view_item')[1]
+          .ecommerce.items[0]
+      ).not.toHaveProperty('item_list_name')
     })
   })
 
@@ -385,7 +553,7 @@ describe('GA4 events', () => {
               item_list_name: 'List of products',
               item_brand: 'Mizuno',
               item_variant: '35',
-              item_store: '1',
+              item_store: 'selected-store',
               in_stock: true,
               item_list_id: 'category-10',
               index: 3,
@@ -394,6 +562,7 @@ describe('GA4 events', () => {
               discount: 0,
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
+              item_category4: '',
               dimension1: '12531',
               dimension2: '',
               dimension3: 'Classic Pink',
@@ -469,7 +638,7 @@ describe('GA4 events', () => {
         productRefId: '123',
         referenceId: '456',
         variant: 'Red',
-        item_store: '1',
+        item_store: 'selected-store',
         in_stock: false,
         item_category4: 'Furniture',
       }
@@ -511,7 +680,7 @@ describe('GA4 events', () => {
               item_variant: '2000304',
               item_category: 'Home & Decor',
               item_category4: 'Furniture',
-              item_store: '1',
+              item_store: 'selected-store',
               in_stock: false,
               quantity: 1,
               price: 197.99,
@@ -527,6 +696,7 @@ describe('GA4 events', () => {
               item_variant: '2000305',
               item_category: 'Home & Decor',
               item_category2: 'Tables',
+              item_category4: '',
               quantity: 2,
               price: 150.9,
               dimension1: '789',
@@ -593,6 +763,7 @@ describe('GA4 events', () => {
               item_name: 'Top Wood',
               item_variant: '2000304',
               item_category: 'Home & Decor',
+              item_category4: '',
               quantity: 3,
               price: 197.99,
               dimension1: '123',
@@ -625,10 +796,11 @@ describe('GA4 events', () => {
             {
               item_brand: 'New Offers!!',
               item_category: 'Apparel & Accessories',
+              item_category4: '',
               item_id: '9',
               item_name: 'Top Everyday Necessaire',
               item_variant: '20',
-              item_store: '1',
+              item_store: 'selected-store',
               price: 1600.99,
               quantity: 2,
               dimension1: '',
@@ -710,6 +882,7 @@ describe('GA4 events', () => {
               item_name: 'Top Wood',
               item_variant: '2000304',
               item_category: 'Home & Decor',
+              item_category4: '',
               quantity: 1,
               price: 197.99,
               dimension1: '123',
@@ -742,6 +915,7 @@ describe('GA4 events', () => {
               item_name: 'Top Wood',
               item_variant: '2000304',
               item_category: 'Home & Decor',
+              item_category4: '',
               quantity: 1,
               price: 197.99,
               dimension1: '123',
@@ -756,6 +930,7 @@ describe('GA4 events', () => {
               item_variant: '2000305',
               item_category: 'Home & Decor',
               item_category2: 'Tables',
+              item_category4: '',
               quantity: 3,
               price: 150.9,
               dimension1: '789',
@@ -771,6 +946,15 @@ describe('GA4 events', () => {
 
   describe('view_cart', () => {
     it('sends an event when a user opens the cart with items', () => {
+      saveListAttributions([
+        {
+          productId: '200000202',
+          listId: 'oferte-saptamanale',
+          listName: 'Oferte saptamanale',
+          position: 2,
+        },
+      ])
+
       const data = viewCartWithItemsMock
 
       const message = new MessageEvent('message', { data })
@@ -788,6 +972,10 @@ describe('GA4 events', () => {
               item_name: 'Top Wood',
               item_variant: '2000304',
               item_category: 'Home & Decor',
+              item_category4: '',
+              item_list_id: 'oferte-saptamanale',
+              item_list_name: 'Oferte saptamanale',
+              index: 2,
               quantity: 2,
               price: 197.99,
               dimension1: '123',
@@ -802,6 +990,7 @@ describe('GA4 events', () => {
               item_variant: '2000305',
               item_category: 'Home & Decor',
               item_category2: 'Tables',
+              item_category4: '',
               quantity: 1,
               price: 150.9,
               dimension1: '789',
@@ -846,10 +1035,11 @@ describe('GA4 events', () => {
             {
               item_brand: 'New Offers!!',
               item_category: 'Apparel & Accessories',
+              item_category4: '',
               item_id: '9',
               item_name: 'Top Everyday Necessaire',
               item_variant: '20',
-              item_store: '1',
+              item_store: 'selected-store',
               price: 1600.99,
               quantity: 2,
               dimension1: '',
@@ -887,6 +1077,7 @@ describe('GA4 events', () => {
               item_name: 'Top Wood',
               item_variant: '2000304',
               item_category: 'Home & Decor',
+              item_category4: '',
               quantity: 1,
               price: 197.99,
               dimension1: '123',
@@ -965,7 +1156,8 @@ describe('GA4 events', () => {
               discount: 0,
               item_category: 'Apparel & Accessories',
               item_category2: 'Shoes',
-              item_store: '1',
+              item_category4: '',
+              item_store: 'selected-store',
               in_stock: true,
               item_list_id: 'category-10',
               dimension1: '123',

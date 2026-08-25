@@ -121,7 +121,8 @@ export function saveListAttributions(
     listId?: string
     listName?: string
     position?: number
-  }>
+  }>,
+  options?: { overwrite?: boolean }
 ) {
   const store = readStore()
   const ts = Date.now()
@@ -131,14 +132,15 @@ export function saveListAttributions(
 
     const existing = store[productId]
 
-    store[productId] = existing
-      ? {
-          listId: existing.listId ?? listId,
-          listName: existing.listName ?? listName,
-          position: existing.position ?? position,
-          ts,
-        }
-      : { listId, listName, position, ts }
+    store[productId] =
+      existing && !options?.overwrite
+        ? {
+            listId: existing.listId ?? listId,
+            listName: existing.listName ?? listName,
+            position: existing.position ?? position,
+            ts,
+          }
+        : { listId, listName, position, ts }
   })
 
   writeStore(store)
@@ -160,6 +162,16 @@ export function consumeListAttributions(productIds: string[]) {
   writeStore(store)
 
   return consumed
+}
+
+export function getListAttributions(productIds: string[]) {
+  const store = readStore()
+
+  return productIds.reduce((result, productId) => {
+    if (store[productId]) result[productId] = store[productId]
+
+    return result
+  }, {} as ListAttributionStore)
 }
 
 export function clearListAttributions() {

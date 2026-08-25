@@ -10,6 +10,7 @@ const transactionProducts = [
     components: [],
     ean: '9812983',
     id: '9',
+    item_store: 'selected-store',
     measurementUnit: 'un',
     name: 'Top Everyday Necessaire 100 RMS',
     originalPrice: 1600.99,

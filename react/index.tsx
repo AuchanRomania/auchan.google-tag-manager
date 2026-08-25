@@ -6,6 +6,7 @@ import { sendEnhancedEcommerceEvents } from './modules/enhancedEcommerceEvents'
 import { sendExtraEvents } from './modules/extraEvents'
 import { sendLegacyEvents } from './modules/legacyEvents'
 import { clearListAttributions } from './modules/listAttribution'
+import { syncSelectedStoreFromSession } from './modules/sessionStore'
 import { PixelMessage } from './typings/events'
 
 const pageTypeByRouteId: Record<string, string> = {
@@ -29,10 +30,10 @@ const pageTypeByRouteId: Record<string, string> = {
   'store.orderplaced': 'order_placed',
 }
 
-function updateDataLayer(data: Record<string, unknown>) {
+function updateDataLayer(data: Record<string, unknown>, pushEvent = true) {
   window.dataLayer = window.dataLayer || []
   window.dataLayer[0] = { ...window.dataLayer[0], ...data }
-  window.dataLayer.push(data)
+  if (pushEvent) window.dataLayer.push(data)
 }
 
 async function hashEmailAddress(email: string) {
@@ -60,7 +61,7 @@ export async function setUserDataFromSession(session?: Session) {
   const isAuthenticated = profile?.isAuthenticated?.value === 'true'
 
   if (!isAuthenticated) {
-    updateDataLayer({ userData: { loggedStatus: 'guest' } })
+    updateDataLayer({ userData: { loggedStatus: 'guest' } }, false)
     return
   }
 
@@ -74,16 +75,14 @@ export async function setUserDataFromSession(session?: Session) {
     ...(userId ? { userId } : {}),
   }
 
-  updateDataLayer({
-    userData: loggedUserData,
-  })
+  updateDataLayer({ userData: loggedUserData }, false)
 
   if (!email) return
 
   const emailHash = await hashEmailAddress(email)
 
   if (emailHash) {
-    updateDataLayer({ userData: { ...loggedUserData, emailHash } })
+    updateDataLayer({ userData: { ...loggedUserData, emailHash } }, false)
   }
 }
 
@@ -93,7 +92,10 @@ export default function GoogleTagManager() {
 
   useEffect(() => setPageTypeFromRoute(route.id), [route.id])
   useEffect(() => {
-    if (!loading) void setUserDataFromSession(session)
+    if (!loading) {
+      syncSelectedStoreFromSession(session)
+      void setUserDataFromSession(session)
+    }
   }, [loading, session])
   useEffect(() => {
     let activeGroups = new Set(

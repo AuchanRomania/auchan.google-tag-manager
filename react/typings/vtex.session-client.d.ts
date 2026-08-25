@@ -13,6 +13,9 @@ declare module 'vtex.session-client' {
       authentication?: {
         storeUserEmail?: SessionValue
       }
+      public?: {
+        deliveryMethods?: SessionValue
+      }
     }
   }
 

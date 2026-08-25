@@ -262,8 +262,20 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
         },
       }
 
+      const themeListTrackerActive = Boolean(
+        window.__auchanViewItemList?.active
+      )
+      const isThemeListImpression = e.data.auchanListTracker === true
+
+      if (themeListTrackerActive && !isThemeListImpression) {
+        return
+      }
+
       viewItemList(e.data)
-      updateEcommerce('productImpression', data)
+
+      if (!isThemeListImpression) {
+        updateEcommerce('productImpression', data)
+      }
 
       return
     }

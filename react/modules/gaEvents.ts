@@ -36,6 +36,7 @@ import {
 import { customDimensions, productViewSkuReference } from './customDimensions'
 import shouldSendGA4Events from './utils/shouldSendGA4Events'
 import {
+  getListAttributions,
   resolveItemListId,
   saveListAttributions,
 } from './listAttribution'
@@ -45,7 +46,7 @@ export function viewItem(eventData: ProductViewData) {
 
   const eventName = 'view_item'
 
-  const { currency, product, list, item_list_id: itemListId } = eventData
+  const { currency, product, list, item_list_id: eventItemListId } = eventData
 
   const {
     selectedSku,
@@ -55,6 +56,10 @@ export function viewItem(eventData: ProductViewData) {
     categories,
     brand,
   } = product
+  const storedAttribution = getListAttributions([productId])[productId]
+  const itemListId = storedAttribution?.listId ?? eventItemListId
+  const itemListName =
+    storedAttribution?.listName ?? (eventItemListId ? list : undefined)
 
   const { itemId: variant } = selectedSku
 
@@ -67,7 +72,7 @@ export function viewItem(eventData: ProductViewData) {
   const item = {
     item_id: productId,
     item_name: productName,
-    ...(list ? { item_list_name: list } : {}),
+    ...(itemListName ? { item_list_name: itemListName } : {}),
     item_brand: brand,
     item_variant: variant,
     discount,
@@ -78,6 +83,9 @@ export function viewItem(eventData: ProductViewData) {
     ...getSellerItemFields(seller),
     ...getReviewFields(product),
     ...(itemListId ? { item_list_id: itemListId } : {}),
+    ...(storedAttribution?.position !== undefined
+      ? { index: storedAttribution.position }
+      : {}),
     ...customDimensions({
       productReference,
       skuReference: productViewSkuReference(product),
@@ -123,7 +131,8 @@ export function viewItemList(eventData: ProductImpressionData) {
       listId: itemListId,
       listName: itemListName,
       position,
-    }))
+    })),
+    { overwrite: hasExplicitListName }
   )
 
   const items = getImpressions(impressions, itemListId, itemListName)
@@ -143,18 +152,24 @@ export function selectItem(eventData: ProductClickData) {
   const eventName = 'select_item'
 
   const { product, list, position } = eventData
+  const storedAttribution = getListAttributions([product.productId])[
+    product.productId
+  ]
   const itemListName =
+    storedAttribution?.listName ??
     product.sku?.item_list_name ??
     product.item_list_name ??
     eventData.item_list_name ??
     list
   const hasSpecificListName = itemListName !== list
   const itemListId = resolveItemListId(
-    product.sku?.item_list_id ??
+    storedAttribution?.listId ??
+      product.sku?.item_list_id ??
       product.item_list_id ??
       (hasSpecificListName ? undefined : eventData.item_list_id),
     itemListName
   )
+  const itemPosition = storedAttribution?.position ?? position
 
   const {
     sku,
@@ -171,7 +186,7 @@ export function selectItem(eventData: ProductClickData) {
         productId,
         listId: itemListId,
         listName: itemListName,
-        position,
+        position: itemPosition,
       },
     ],
     { overwrite: true }
@@ -191,7 +206,7 @@ export function selectItem(eventData: ProductClickData) {
     ...(itemListName ? { item_list_name: itemListName } : {}),
     item_brand: brand,
     item_variant: variant,
-    index: position,
+    index: itemPosition,
     price,
     quantity,
     discount,

@@ -33,7 +33,10 @@ import {
   setSelectedStoreId,
   syncSelectedStoreFromSession,
 } from '../modules/sessionStore'
-import { saveListAttributions } from '../modules/listAttribution'
+import {
+  getListAttributions,
+  saveListAttributions,
+} from '../modules/listAttribution'
 
 jest.mock('../modules/utils/shouldSendGA4Events')
 
@@ -395,10 +398,21 @@ describe('GA4 events', () => {
     })
 
     it('uses the specific shelf title instead of the generic homepage list', () => {
+      const productId = productImpressionData.impressions[0].product.productId
+
+      saveListAttributions([
+        {
+          productId,
+          listId: 'product-slider',
+          listName: 'Product Slider',
+        },
+      ])
       const data = {
         ...productImpressionData,
         list: 'Home Shelf',
-        item_list_id: 'home-shelf',
+        item_list_id: 'reduceri-myclub',
+        item_list_name: 'Reduceri MyClub',
+        auchanListTracker: true as const,
         impressions: productImpressionData.impressions.map(impression => ({
           ...impression,
           product: {
@@ -429,6 +443,10 @@ describe('GA4 events', () => {
           }),
         })
       )
+      expect(getListAttributions([productId])[productId]).toMatchObject({
+        listId: 'reduceri-myclub',
+        listName: 'Reduceri MyClub',
+      })
     })
   })
 
@@ -468,6 +486,56 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('uses the preceding list instead of the generic PDP list', () => {
+      saveListAttributions([
+        {
+          productId: productDetails.product.productId,
+          listId: 'produse-similare',
+          listName: 'Produse similare',
+          position: 2,
+        },
+      ])
+      const data = {
+        ...productDetails,
+        list: 'Product Slider',
+        item_list_id: undefined,
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'view_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                item_list_id: 'produse-similare',
+                item_list_name: 'Produse similare',
+                index: 2,
+              }),
+            ],
+          }),
+        })
+      )
+    })
+
+    it('does not send a generic PDP list without prior attribution', () => {
+      const data = {
+        ...productDetails,
+        list: 'Product Slider',
+        item_list_id: undefined,
+      }
+
+      handleEvents(new MessageEvent('message', { data }))
+
+      const item = mockedUpdate.mock.calls.find(
+        ([eventName]) => eventName === 'view_item'
+      )[1].ecommerce.items[0]
+
+      expect(item).not.toHaveProperty('item_list_id')
+      expect(item).not.toHaveProperty('item_list_name')
     })
 
     it('uses the selected store for item_store, price and stock', () => {
@@ -571,6 +639,36 @@ describe('GA4 events', () => {
           ],
         },
       })
+    })
+
+    it('keeps the preceding list attribution instead of the generic click list', () => {
+      saveListAttributions([
+        {
+          productId: productClick.product.productId,
+          listId: 'oferte-saptamanale',
+          listName: 'Oferte saptamanale',
+          position: 2,
+        },
+      ])
+
+      handleEvents(new MessageEvent('message', { data: productClick }))
+
+      expect(mockedUpdate).toHaveBeenCalledWith(
+        'select_item',
+        expect.objectContaining({
+          ecommerce: expect.objectContaining({
+            item_list_id: 'oferte-saptamanale',
+            item_list_name: 'Oferte saptamanale',
+            items: [
+              expect.objectContaining({
+                item_list_id: 'oferte-saptamanale',
+                item_list_name: 'Oferte saptamanale',
+                index: 2,
+              }),
+            ],
+          }),
+        })
+      )
     })
   })
 
@@ -706,6 +804,38 @@ describe('GA4 events', () => {
             },
           ],
         },
+      })
+    })
+
+    it('keeps list attribution on every add_to_cart event', () => {
+      saveListAttributions([
+        {
+          productId: viewCartWithItemsMock.items[0].productId,
+          listId: 'oferte-saptamanale',
+          listName: 'Oferte saptamanale',
+          position: 2,
+        },
+      ])
+      const data = {
+        ...viewCartWithItemsMock,
+        event: 'addToCart',
+        eventName: 'vtex:addToCart',
+      } as AddToCartData
+
+      handleEvents(new MessageEvent('message', { data }))
+      handleEvents(new MessageEvent('message', { data }))
+
+      const calls = mockedUpdate.mock.calls.filter(
+        ([eventName]) => eventName === 'add_to_cart'
+      )
+
+      expect(calls).toHaveLength(2)
+      calls.forEach(([, payload]) => {
+        expect(payload.ecommerce.items[0]).toMatchObject({
+          item_list_id: 'oferte-saptamanale',
+          item_list_name: 'Oferte saptamanale',
+          index: 2,
+        })
       })
     })
   })

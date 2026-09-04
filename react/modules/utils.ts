@@ -357,8 +357,8 @@ export function formatCartItemsAndValue(
       price: formattedPrice,
       ...(roundedDiscount !== undefined ? { discount: roundedDiscount } : {}),
       ...formattedCategories,
-      ...listFields,
       ...getGA4ItemFields(formattedCategories, item),
+      ...listFields,
       ...customDimensions({
         productReference: item.productRefId,
         skuReference: item.referenceId,

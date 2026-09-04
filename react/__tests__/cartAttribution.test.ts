@@ -81,7 +81,7 @@ it('formats discounted cart items with categories and list attribution', () => {
   expect(window.sessionStorage.getItem('ga4:listAttr:v1')).not.toBe('{}')
 })
 
-it('prefers explicit list attribution from the event payload', () => {
+it('prefers stored list attribution over stale cart event data', () => {
   saveListAttributions([
     {
       productId: 'product-1',
@@ -104,9 +104,9 @@ it('prefers explicit list attribution from the event payload', () => {
   )
 
   expect(items[0]).toMatchObject({
-    item_list_id: 'explicit-list',
-    item_list_name: 'Explicit',
-    index: 4,
+    item_list_id: 'stored-list',
+    item_list_name: 'Stored',
+    index: 1,
   })
 })
 

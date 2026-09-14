@@ -8,15 +8,6 @@
   "scripts": {
     "postreleasy": "vtex publish --verbose"
   },
-  "billingOptions": {
-    "type": "free",
-    "support": {
-      "url": "https://support.vtex.com/hc/requests"
-    },
-    "availableCountries": [
-      "*"
-    ]
-  },
   "builders": {
     "react": "3.x",
     "store": "0.x",

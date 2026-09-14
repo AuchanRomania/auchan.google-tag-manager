@@ -8,18 +8,14 @@ const mockedPush = push as jest.Mock
 beforeEach(() => mockedPush.mockReset())
 
 test.each(['view_item_list', 'view_store', 'add_to_cart'])(
-  'clears ecommerce data before %s',
+  'pushes %s without a separate ecommerce reset',
   eventName => {
     const data = { ecommerce: { items: [] } }
 
     updateEcommerce(eventName, data)
 
-    expect(mockedPush).toHaveBeenCalledTimes(2)
-    expect(mockedPush).toHaveBeenNthCalledWith(1, {
-      ecommerce: null,
-      ecommerceV2: null,
-    })
-    expect(mockedPush).toHaveBeenNthCalledWith(2, {
+    expect(mockedPush).toHaveBeenCalledTimes(1)
+    expect(mockedPush).toHaveBeenCalledWith({
       event: eventName,
       ...data,
     })

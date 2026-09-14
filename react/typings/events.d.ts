@@ -144,6 +144,7 @@ export interface ProductViewData extends EventData {
   eventName: 'vtex:productView'
   product: Product
   list?: string
+  item_list_id?: string
 }
 
 export interface ProductClickData extends EventData {
@@ -152,6 +153,8 @@ export interface ProductClickData extends EventData {
   product: ProductSummary
   position: number
   list?: string
+  item_list_id?: string
+  item_list_name?: string
 }
 
 export interface ProductImpressionData extends EventData {
@@ -161,6 +164,9 @@ export interface ProductImpressionData extends EventData {
   product?: ProductSummary // deprecated, use impressions list!
   position?: number // deprecated, use impressions list!
   list: string
+  item_list_id?: string
+  item_list_name?: string
+  auchanListTracker?: true
 }
 
 export interface CartLoadedData extends EventData {
@@ -216,16 +222,28 @@ export interface ViewCartData extends EventData {
 
 export interface AddToWishlistData extends EventData {
   event: 'addToWishlist'
-  eventType: 'vtex:addToWishlist'
+  eventType?: 'vtex:addToWishlist'
   eventName: 'vtex:addToWishlist'
-  items: {
+  items?: {
     selectedItem: SelectedItem
     product: ProductSummary
   }
-  list: string
+  list?: string
+  item_list_id?: string
+  wishlistEventObject?: {
+    action: string
+    button_type: string
+    page_type: string
+    product_id: string
+    product_title: string
+    item_price: number
+    item_quantity: number
+    product_brand: string
+    categories_path: string
+  }
 }
 
-export interface SelectedItem {
+export interface SelectedItem extends GA4ItemData {
   attachments?: any[]
   complementName?: string
   ean?: string
@@ -317,10 +335,19 @@ interface CartItemAdditionalInfo {
   brandId: string
 }
 
-interface CartItem {
+export interface GA4ItemData {
+  item_store?: string
+  reviews_number?: number
+  reviews_avg?: number
+  in_stock?: boolean
+  item_list_id?: string
+  item_list_name?: string
+  index?: number
+  item_category4?: string
+}
+
+interface CartItem extends GA4ItemData {
   id: string
-  productCategories: Record<string, string> | null
-  productCategoryIds?: string
   additionalInfo: CartItemAdditionalInfo | null
   brand: string
   ean: string
@@ -332,6 +359,9 @@ interface CartItem {
   price: number
   priceIsInt?: boolean
   sellingPrice: number
+  originalPrice?: number
+  discount?: number
+  categories?: string[]
   productId: string
   productRefId: string
   quantity: number
@@ -453,7 +483,7 @@ export interface ShippingMethod {
   selectedSla: string
 }
 
-export interface ProductOrder {
+export interface ProductOrder extends GA4ItemData {
   id: string
   name: string
   sku: string
@@ -488,7 +518,7 @@ export interface PriceTag {
   value: number
 }
 
-export interface Product {
+export interface Product extends GA4ItemData {
   brand: string
   brandId: string
   categories: string[]
@@ -503,7 +533,7 @@ export interface Product {
   selectedSku: Item
 }
 
-export interface Item {
+export interface Item extends GA4ItemData {
   itemId: string
   name: string
   ean: string
@@ -512,7 +542,7 @@ export interface Item {
   sellers: Seller[]
 }
 
-export interface ProductSummary {
+export interface ProductSummary extends GA4ItemData {
   brand: string
   brandId: string
   categories: string[]
@@ -525,7 +555,7 @@ export interface ProductSummary {
   sku: ItemSummary
 }
 
-interface ItemSummary {
+interface ItemSummary extends GA4ItemData {
   itemId: string
   ean: string
   name: string

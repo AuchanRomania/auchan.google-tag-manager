@@ -3,6 +3,7 @@ const productImpression = {
   eventName: 'vtex:productImpression',
   event: 'productImpression',
   list: 'Shelf',
+  item_list_id: 'shelf-home',
   impressions: [
     {
       product: {
@@ -184,6 +185,8 @@ const productImpression = {
         properties: [],
         __typename: 'Product',
         sku: {
+          item_store: 'selected-store',
+          in_stock: true,
           name: 'Classic Pink',
           itemId: '35',
           measurementUnit: 'un',
@@ -326,6 +329,7 @@ const productImpression = {
         properties: [],
         __typename: 'Product',
         sku: {
+          item_store: 'selected-store',
           name: 'Grey',
           itemId: '32',
           measurementUnit: 'un',

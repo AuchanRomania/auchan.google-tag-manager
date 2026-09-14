@@ -1,5 +1,8 @@
 {
   "pixel.gtm": {
     "component": "index"
+  },
+  "google-tag-manager-context": {
+    "component": "index"
   }
 }

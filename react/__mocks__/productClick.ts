@@ -178,6 +178,8 @@ const productClick = {
     properties: [],
     __typename: 'Product',
     sku: {
+      item_store: 'selected-store',
+      in_stock: true,
       name: 'Classic Pink',
       itemId: '35',
       measurementUnit: 'un',
@@ -258,6 +260,7 @@ const productClick = {
     },
   },
   list: 'List of products',
+  item_list_id: 'category-10',
   position: 3,
 }
 

@@ -262,8 +262,20 @@ export async function sendEnhancedEcommerceEvents(e: PixelMessage) {
         },
       }
 
+      const themeListTrackerActive = Boolean(
+        window.__auchanViewItemList?.active
+      )
+      const isThemeListImpression = e.data.auchanListTracker === true
+
+      if (themeListTrackerActive && !isThemeListImpression) {
+        return
+      }
+
       viewItemList(e.data)
-      updateEcommerce('productImpression', data)
+
+      if (!isThemeListImpression) {
+        updateEcommerce('productImpression', data)
+      }
 
       return
     }
@@ -435,11 +447,7 @@ function getCheckoutProductObjectData(
     id: item.productId, // Product id
     variant: item.id, // SKU id
     name: productName, // Product name without variant
-    category: Object.keys(item.productCategories ?? {}).reduce(
-      (categories, category) =>
-        categories ? `${categories}/${category}` : category,
-      ''
-    ),
+    category: item.category,
     brand: item.additionalInfo?.brandName ?? '',
     price: item.sellingPrice / 100,
     quantity: item.quantity,

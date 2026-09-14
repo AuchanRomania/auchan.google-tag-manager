@@ -12,6 +12,8 @@ const productWishlist = {
       metaTagDescription: "If you go classic, you can't go wrong.",
       linkText: 'classic-shoes',
       productReference: '123',
+      reviews_number: 24,
+      reviews_avg: 4.5,
       categories: ['/Apparel & Accessories/Shoes/', '/Apparel & Accessories/'],
       categoryId: '10',
       categoriesIds: ['/25/10/', '/25/'],
@@ -607,6 +609,8 @@ const productWishlist = {
       __typename: 'Product',
       benefits: [],
       sku: {
+        item_store: 'selected-store',
+        in_stock: true,
         itemId: '35',
         name: 'Classic Pink',
         nameComplete: 'Classic Shoes Top Classic Pink',
@@ -794,6 +798,7 @@ const productWishlist = {
     },
   },
   list: 'List of products',
+  item_list_id: 'category-10',
 }
 
 export default productWishlist

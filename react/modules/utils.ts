@@ -1,20 +1,81 @@
 import {
   CartItem,
+  GA4ItemData,
   Impression,
   Order,
   ProductOrder,
   Seller,
 } from '../typings/events'
 import { customDimensions } from './customDimensions'
+import { getListAttributions } from './listAttribution'
+import { getSelectedStoreId } from './sessionStore'
+
+const ga4ItemFieldNames = [
+  'item_store',
+  'in_stock',
+  'item_list_id',
+  'item_list_name',
+  'index',
+  'item_category4',
+] as const
+
+export function getGA4ItemFields(
+  ...items: Array<GA4ItemData | undefined>
+) {
+  const fields = items.reduce(
+    (result, item) =>
+      ga4ItemFieldNames.reduce(
+        (itemFields, fieldName) =>
+          item?.[fieldName] === undefined
+            ? itemFields
+            : { ...itemFields, [fieldName]: item[fieldName] },
+        result
+      ),
+    { item_category4: '' } as GA4ItemData
+  )
+
+  const selectedStoreId = getSelectedStoreId()
+
+  return selectedStoreId ? { ...fields, item_store: selectedStoreId } : fields
+}
+
+export function getReviewFields(item: GA4ItemData) {
+  if (!item) return {}
+
+  return {
+    ...(item.reviews_number !== undefined
+      ? { reviews_number: item.reviews_number }
+      : {}),
+    ...(item.reviews_avg !== undefined
+      ? { reviews_avg: item.reviews_avg }
+      : {}),
+  }
+}
 
 export function getSeller(sellers: Seller[]) {
-  const defaultSeller = sellers.find(seller => seller.sellerDefault)
+  const selectedStoreId = getSelectedStoreId()
 
-  if (!defaultSeller) {
-    return sellers[0]
+  return (
+    (selectedStoreId
+      ? sellers.find(seller => seller.sellerId === selectedStoreId)
+      : undefined) ??
+    sellers.find(seller => seller.sellerDefault) ??
+    sellers[0]
+  )
+}
+
+export function getSellerItemFields(seller?: Seller) {
+  if (!seller) return {}
+
+  const availableQuantity =
+    seller.commertialOffer?.AvailableQuantity ??
+    seller.commercialOffer?.AvailableQuantity
+
+  return {
+    ...(availableQuantity !== undefined
+      ? { in_stock: availableQuantity > 0 }
+      : {}),
   }
-
-  return defaultSeller
 }
 
 export function getPrice(seller: Seller) {
@@ -62,32 +123,17 @@ export function getCategoriesWithHierarchy(categoriesArray: string[]) {
   return categoriesFormatted
 }
 
-function getCategoriesHierarchyByKey(
-  categories: Record<string, string> | null,
-  keysArray?: string[]
-) {
-  if (!keysArray || !keysArray.length || !categories) return []
-  const categoriesFormatted: string[] = []
-  const categoriesHierarchyFormatted = {}
-
-  keysArray.forEach(key => {
-    if (key) categoriesFormatted.push(categories[key])
-  })
-
-  categoriesFormatted.forEach((category, index) => {
-    formatCategoriesHierarchy(categoriesHierarchyFormatted, category, index)
-  })
-
-  return categoriesHierarchyFormatted
-}
-
 export function getQuantity(seller: Seller) {
   const isAvailable = seller.commertialOffer.AvailableQuantity > 0
 
   return isAvailable ? 1 : 0
 }
 
-export function getImpressions(impressions: Impression[]) {
+export function getImpressions(
+  impressions: Impression[],
+  itemListId?: string,
+  itemListName?: string
+) {
   if (!impressions || !impressions.length) return []
 
   const formattedImpressions = impressions.map(impression => {
@@ -119,6 +165,10 @@ export function getImpressions(impressions: Impression[]) {
       price,
       quantity,
       ...categoriesHierarchy,
+      ...getGA4ItemFields(categoriesHierarchy, product, sku),
+      ...getSellerItemFields(seller),
+      ...(itemListName ? { item_list_name: itemListName } : {}),
+      ...(itemListId ? { item_list_id: itemListId } : {}),
       ...customDimensions({
         productReference,
         skuReference: referenceId?.Value,
@@ -211,6 +261,9 @@ function formatPurchaseProduct(product: ProductOrder) {
   } = product
 
   const productName = getProductNameWithoutVariant(name, skuName)
+  const categoriesHierarchy = getCategoriesWithHierarchy([
+    categoryTree.join('/'),
+  ])
 
   const item = {
     item_id: id,
@@ -219,7 +272,8 @@ function formatPurchaseProduct(product: ProductOrder) {
     item_variant: sku,
     price,
     quantity,
-    ...getCategoriesWithHierarchy([categoryTree.join('/')]),
+    ...categoriesHierarchy,
+    ...getGA4ItemFields(categoriesHierarchy, product),
     ...customDimensions({
       productReference: productRefId,
       skuReference: skuRefId,
@@ -234,26 +288,63 @@ function formatPurchaseProduct(product: ProductOrder) {
 export function formatCartItemsAndValue(
   cartItems: CartItem[],
   options?: {
-    dividePrice: boolean
+    dividePrice?: boolean
+    useListAttribution?: boolean
   }
 ) {
   let totalValue = 0.0
 
   if (!cartItems.length) return { items: [], totalValue }
 
+  const storedAttributions = options?.useListAttribution
+    ? getListAttributions(cartItems.map(item => item.productId))
+    : {}
+
   const items = cartItems.map((item: CartItem) => {
     const productName = getProductNameWithoutVariant(item.name, item.skuName)
 
-    const shouldFormatPrice = item.priceIsInt ?? options?.dividePrice
-
-    const formattedPrice = shouldFormatPrice ? item.price / 100 : item.price
+    const usesSellingPrice = item.sellingPrice !== undefined
+    const shouldFormatPrice =
+      item.priceIsInt ?? options?.dividePrice ?? usesSellingPrice
+    const rawPrice = usesSellingPrice ? item.sellingPrice : item.price
+    const formattedPrice = shouldFormatPrice ? rawPrice / 100 : rawPrice
 
     const itemBrand = item.brand ? item.brand : item.additionalInfo?.brandName
 
-    const categoryIds = splitIntoCategories(item.productCategoryIds)
-    const formattedCategories = item.category
-      ? getCategoriesWithHierarchy([item.category])
-      : getCategoriesHierarchyByKey(item.productCategories, categoryIds)
+    const formattedCategories = getCategoriesWithHierarchy(
+      item.categories?.length ? item.categories : [item.category]
+    )
+    const rawOriginalPrice =
+      item.originalPrice ?? (usesSellingPrice ? item.price : undefined)
+    const originalPrice =
+      rawOriginalPrice !== undefined
+        ? shouldFormatPrice
+          ? rawOriginalPrice / 100
+          : rawOriginalPrice
+        : undefined
+    const discount =
+      item.discount !== undefined
+        ? Math.max(
+            0,
+            shouldFormatPrice ? item.discount / 100 : item.discount
+          )
+        : originalPrice !== undefined
+        ? Math.max(0, originalPrice - formattedPrice)
+        : undefined
+    const roundedDiscount =
+      discount !== undefined ? Math.round(discount * 100) / 100 : undefined
+    const storedAttribution = storedAttributions[item.productId]
+    const listFields = {
+      ...(storedAttribution?.listId
+        ? { item_list_id: storedAttribution.listId }
+        : {}),
+      ...(storedAttribution?.listName
+        ? { item_list_name: storedAttribution.listName }
+        : {}),
+      ...(storedAttribution?.position !== undefined
+        ? { index: storedAttribution.position }
+        : {}),
+    }
 
     totalValue += formattedPrice * item.quantity
 
@@ -264,7 +355,10 @@ export function formatCartItemsAndValue(
       item_variant: item.skuId,
       quantity: item.quantity,
       price: formattedPrice,
+      ...(roundedDiscount !== undefined ? { discount: roundedDiscount } : {}),
       ...formattedCategories,
+      ...getGA4ItemFields(formattedCategories, item),
+      ...listFields,
       ...customDimensions({
         productReference: item.productRefId,
         skuReference: item.referenceId,

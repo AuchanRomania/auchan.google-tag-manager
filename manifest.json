@@ -1,21 +1,12 @@
 {
   "name": "google-tag-manager",
-  "vendor": "vtex",
-  "version": "3.5.4",
+  "vendor": "auchan",
+  "version": "1.0.2",
   "title": "Google Tag Manager",
   "description": "Google Tag Manager",
   "mustUpdateAt": "2019-04-03",
   "scripts": {
     "postreleasy": "vtex publish --verbose"
-  },
-  "billingOptions": {
-    "type": "free",
-    "support": {
-      "url": "https://support.vtex.com/hc/requests"
-    },
-    "availableCountries": [
-      "*"
-    ]
   },
   "builders": {
     "react": "3.x",
@@ -24,13 +15,9 @@
     "docs": "0.x"
   },
   "dependencies": {
-    "vtex.pixel-interfaces": "1.x"
+    "vtex.pixel-interfaces": "1.x",
+    "vtex.session-client": "1.x"
   },
-  "policies": [
-    {
-      "name": "pixel"
-    }
-  ],
   "settingsSchema": {
     "title": "Google Tag Manager",
     "type": "object",
